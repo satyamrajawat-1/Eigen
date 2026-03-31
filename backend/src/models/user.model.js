@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-
+import jwt from "jsonwebtoken";
 const CLUB_NAMES = [
     'CODEBASE', 'KERNEL', 'ARC ROBOTICS', 'ALGORITHMS', 
     'CYPHER', 'GDF', 'GFG', 'TGCC','TECHKNOW'

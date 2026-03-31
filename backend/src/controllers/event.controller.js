@@ -2,7 +2,7 @@ import { Event } from "../models/event.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/Apiresponse.js";
 import { asyncHandler } from "../utils/AsyncHandler.js";
-
+import { Attendance } from "../models/attendance.model.js";
 const ALLOWED_CLUBS = [
     'CODEBASE', 'KERNEL', 'ARC ROBOTICS', 'ALGORITHMUS', 
     'CYPHER', 'GDF', 'GFG', 'TGCC', 'TECHKNOW'
@@ -19,16 +19,16 @@ const createEvent = asyncHandler(async (req, res) => {
         throw new ApiError(400, "TITLE, CLUBNAME, DATE, START TIME, AND END TIME ARE REQUIRED");
     }
 
-    // 2. Image Validation (Checking if Multer attached the file)
+    // 2. Image Validation 
     const imageLocalPath = req.file?.path;
-    
     if (!imageLocalPath) {
         throw new ApiError(400, "EVENT IMAGE (POSTER) IS REQUIRED");
     }
 
     const upperClubName = clubName.toUpperCase();
+    const upperTitle = title.toUpperCase().trim();
 
-    // 4. Club & Role Validation
+    // 3. Club & Role Validation
     if (!ALLOWED_CLUBS.includes(upperClubName)) {
         throw new ApiError(400, `INVALID CLUB. ALLOWED: ${ALLOWED_CLUBS.join(', ')}`);
     }
@@ -41,7 +41,7 @@ const createEvent = asyncHandler(async (req, res) => {
         throw new ApiError(403, `NOT AUTHORIZED FOR ${upperClubName}`);
     }
 
-    // 5. Team Logic Parsing
+    // 4. Team Logic Parsing
     let pType = participationType ? participationType.toUpperCase() : 'INDIVIDUAL';
     let finalMin = 1, finalMax = 1;
 
@@ -52,9 +52,22 @@ const createEvent = asyncHandler(async (req, res) => {
         if (finalMin > finalMax) throw new ApiError(400, "MIN SIZE CANNOT BE GREATER THAN MAX SIZE");
     }
 
+    // ==========================================
+    // 5. NEW: CHECK FOR DUPLICATE EVENT
+    // ==========================================
+    const existingEvent = await Event.findOne({
+        title: upperTitle,
+        clubName: upperClubName
+    });
+
+    if (existingEvent) {
+        throw new ApiError(409, `AN EVENT NAMED '${upperTitle}' ALREADY EXISTS FOR ${upperClubName}`);
+    }
+    // ==========================================
+
     // 6. Create Event in Database
     const newEvent = await Event.create({
-        title,
+        title: upperTitle,
         clubName: upperClubName,
         description,
         date,

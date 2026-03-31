@@ -9,7 +9,7 @@ app.use(cookieParser())
 
 
 app.use(cors({
-    origin:"http://localhost:3175",
+    origin:"http://localhost:5173",
     credentials:true,
     methods:["GET","POST","PUT","DELETE","PATCH","OPTIONS"],
     allowedHeaders:["Content-Type","Authorization","X-Requested-With","Accept"]
@@ -30,9 +30,9 @@ app.use(express.urlencoded({
 app.use(express.static("public"))
 
 
-app.use("/api/v1/user" , userRouter)
-app.use("/api/v1/event" , eventRouter)
-app.use("/api/v1/team" , teamRouter)
+app.use("/api/v1/users" , userRouter)
+app.use("/api/v1/events" , eventRouter)
+app.use("/api/v1/teams" , teamRouter)
 
 
 export {app}

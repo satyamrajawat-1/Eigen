@@ -23,4 +23,4 @@ const clubMemberSchema = new mongoose.Schema({
   ],
 });
 
-module.exports = mongoose.model("clubMember", clubMemberSchema);
+export const clubMember = mongoose.model("clubMember", clubMemberSchema);

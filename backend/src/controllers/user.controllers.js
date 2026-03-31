@@ -4,42 +4,84 @@ import { ApiResponse } from "../utils/Apiresponse.js";
 import { User } from "../models/user.model.js";
 import { Attendance } from "../models/attendance.model.js";
 import { Event } from "../models/event.model.js";
-import admin from "firebase-admin";
 import { v4 as uuidv4 } from "uuid";
-import { Team } from "../models/team.model.js";
+import { OAuth2Client } from 'google-auth-library';
+import { clubMember } from "../models/club.model.js";
 
-const registerUser = asyncHandler(async(req,res)=>{
-    const {firebaseToken} = req.body;
-    if(!firebaseToken){
-        throw new ApiError(400 , "FireBase Token is Required")
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); 
+
+const registerUser = asyncHandler(async(req, res) => {
+    const { googleToken } = req.body; 
+    
+    if(!googleToken){
+        throw new ApiError(400, "Google Token is Required");
     }
-    const decodedFirebase = await admin.auth().verifyIdToken(firebaseToken);
-    const { uid, email, name } = decodedFirebase;
 
-    let user = await User.findOne({ firebaseUid: uid });
+    // 1. Verify token
+    const ticket = await client.verifyIdToken({
+        idToken: googleToken,
+        audience: process.env.GOOGLE_CLIENT_ID, 
+    });
+
+    const payload = ticket.getPayload();
+    const { sub: uid, email, name } = payload; 
+
+    // 2. Find if user already exists
+    let user = await User.findOne({ firebaseUid: uid }); 
+    
     if (!user) {
         const isCollege = email.toUpperCase().endsWith("@IIITKOTA.AC.IN");
+        
         if(!isCollege){
-            throw new ApiError(400 , "Only College Student Can Registered Through This")
+            throw new ApiError(403, "Only College Students can register through this portal.");
         }
+
+        // --- NEW CLUB CHECKING LOGIC ---
+        // Extract studentId from email (e.g., "2024kucp1160@iiitkota.ac.in" -> "2024KUCP1160")
+        const studentId = email.split('@')[0].toUpperCase();
+
+        // Search the Club schema to see if this studentId exists in any club's members array
+        const userClubs = await clubMember.find({ "members.studentId": studentId });
+
+        // Initialize default roles and empty clubs array
+        let assignedRoles = ["STUDENT"];
+        let assignedClubs = [];
+
+        // If the query found any clubs, update arrays
+        if (userClubs && userClubs.length > 0) {
+            assignedRoles.push("CLUB_MEMBER"); // Add the elevated role
+            
+            // Extract just the club names and ensure they match your User schema's Enum (Uppercase)
+            assignedClubs = userClubs.map(club => club.clubName.toUpperCase());
+        }
+        // -------------------------------
+
+        // 3. Create the User with dynamic roles and clubs
         user = await User.create({
-            firebaseUid: uid,
+            firebaseUid: uid, 
             email: email.toUpperCase(),
             name: name.toUpperCase(),
-            roles: isCollege ? ["STUDENT"] : ["OUTSIDE_STUDENT"],
+            roles: assignedRoles,             // Dynamically assigned
+            clubMemberships: assignedClubs,   // Dynamically assigned
             qrCodeIdentifier: uuidv4() 
         });
     }
-    let accessToken = user.generateAccessToken(user._id);
+
+    // 4. Generate Session Token
+    let accessToken = user.generateAccessToken(); 
+    console.log(accessToken)
+    
     const options = {
-        httpOnly:true,
-        secure:true,
+        httpOnly: true,
+        secure: true,
         sameSite: "None"
-    }
-    return res.status(200).cookie("accessToken" , accessToken , options).json(new ApiResponse(200 , user , "User created Successfully"))
-
-})
-
+    };
+    
+    return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .json(new ApiResponse(200, user, "User authenticated successfully"));
+});
  const registerOutsideUser = asyncHandler(async (req, res) => {
     const { name, email,phone } = req.body;
     const TARGET_EVENT = "DJ NIGHT";
@@ -47,6 +89,13 @@ const registerUser = asyncHandler(async(req,res)=>{
     // 1. Validation
     if (!name || !email || !phone) {
         throw new ApiError(400, "NAME, EMAIL AND PHONE ARE REQUIRED FOR REGISTRATION");
+    }
+
+    const isTechknowMember = req.user?.clubMemberships?.includes('TECHKNOW');
+    const isAdmin = req.user?.roles?.includes('ADMIN');
+
+    if (!isTechknowMember && !isAdmin) {
+        throw new ApiError(403, "ACCESS DENIED: ONLY MEMBERS OF TECHKNOW CAN REGISTER OUTSIDE STUDENTS.");
     }
 
     // 2. Find the Event ID based on the Name "DJ NIGHT"
