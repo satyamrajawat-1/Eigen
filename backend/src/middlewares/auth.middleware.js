@@ -10,7 +10,7 @@ export const verifyJWT = asyncHandler(async(req, res, next) => {
             throw new ApiError(401, "UNAUTHORIZED REQUEST - NO TOKEN PROVIDED");
         }
         const decodedToken =jwt.verify(token , process.env.ACCESS_TOKEN_SECRET)
-        const user = await User.findById(decodedToken?._id).select("-password -refreshToken");
+        const user = await User.findById(decodedToken?._id).select("-password -accessToken");
         if (!user) {
             throw new ApiError(401, "USER NOT REGISTERED IN DATABASE");
         }

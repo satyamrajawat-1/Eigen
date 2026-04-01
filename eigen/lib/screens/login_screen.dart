@@ -22,6 +22,16 @@ class _LoginScreenState extends State<LoginScreen> {
     String? idToken = await _authService.loginWithGoogle();
 
     if (idToken != null) {
+      debugPrint('\n========== GOOGLE ID TOKEN ==========');
+      // Print in chunks of 500 characters to avoid console limits
+      final int chunkSize = 500;
+      for (int i = 0; i < idToken.length; i += chunkSize) {
+        debugPrint(idToken.substring(
+            i,
+            i + chunkSize > idToken.length ? idToken.length : i + chunkSize
+        ));
+      }
+      debugPrint('=====================================\n');
       // 2. Success! Save the token in the phone's secure vault
       // (Later, we will swap this for your Node.js JWT, but this works for now)
       await _storage.write(key: 'auth_token', value: idToken);

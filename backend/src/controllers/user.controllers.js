@@ -178,10 +178,66 @@ const logOutUser = asyncHandler(async (req, res) => {
         .json(new ApiResponse(200, {}, "LOGOUT SUCCESSFUL"));
 });
 
+// Add this new controller function
+const loginWithGoogle = asyncHandler(async (req, res) => {
+    const { googleToken } = req.body;
+
+    if (!googleToken) {
+        throw new ApiError(400, "Google Token is Required for login");
+    }
+
+    // 1. Verify the Google Token
+    const ticket = await client.verifyIdToken({
+        idToken: googleToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { email } = payload; 
+
+    // 2. Check if the user already exists
+    const user = await User.findOne({ email: email.toUpperCase() });
+
+    if (!user) {
+        throw new ApiError(404, "USER NOT FOUND. PLEASE REGISTER FIRST.");
+    }
+
+    // 3. Generate Access Token
+    const accessToken = user.generateAccessToken();
+
+    // 4. Save token to DB for secure logout later
+    user.accessToken = accessToken;
+    await user.save({ validateBeforeSave: false });
+
+    // 5. Fetch clean profile (excluding tokens/passwords)
+    const userProfile = await User.findById(user._id).select("-accessToken -__v");
+
+    const options = {
+        httpOnly: true,
+        secure: true,
+        sameSite: "None"
+    };
+
+    // 6. Return both Cookie (for web) and JSON Token (for Flutter secure storage)
+    return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .json(
+            new ApiResponse(
+                200, 
+                { 
+                    user: userProfile, 
+                    token: accessToken 
+                }, 
+                "USER LOGGED IN SUCCESSFULLY"
+            )
+        );
+});
 
 
 export {
     registerUser,
     registerOutsideUser,
+    loginWithGoogle,
     logOutUser
 }

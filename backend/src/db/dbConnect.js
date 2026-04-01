@@ -18,6 +18,7 @@ class DatabaseConnection {
 
         mongoose.set("strictQuery", true);
         mongoose.connection.on("connected", () => {
+            console.log(mongoose.connection.name)
             console.log("MONGODB CONNECTED SUCCESSFULLY !")
             this.isConnected = true
 
