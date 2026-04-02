@@ -1,19 +1,36 @@
+// lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../services/auth_service.dart';
-import '../models/mock_data.dart';
-import 'login_screen.dart';
-import 'event_details_screen.dart'; // We will build this next
+import 'package:intl/intl.dart'; // Run `flutter pub add intl` in terminal if you don't have this!
+import '../models/event_model.dart';
+import '../services/event_service.dart';
+// import 'event_details_screen.dart'; // We will hook this up next!
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  Future<void> _logout(BuildContext context) async {
-    const storage = FlutterSecureStorage();
-    await storage.delete(key: 'auth_token');
-    await AuthService().logout();
-    if (!context.mounted) return;
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final EventService _eventService = EventService();
+  late Future<List<EventModel>> _myEvents;
+
+  @override
+  void initState() {
+    super.initState();
+    // Fire the API call as soon as the screen loads
+    _myEvents = _eventService.fetchMyEvents();
+  }
+
+  // Helper function to make MongoDB dates look pretty (e.g., "Oct 12")
+  String _formatDate(String dateString) {
+    try {
+      final DateTime parsed = DateTime.parse(dateString);
+      return DateFormat('MMM dd').format(parsed);
+    } catch (e) {
+      return dateString;
+    }
   }
 
   @override
@@ -21,45 +38,116 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('ACTIVE EVENTS', style: TextStyle(fontWeight: FontWeight.bold)),
-        centerTitle: true,
-        actions: [
-          IconButton(icon: const Icon(Icons.logout, color: Colors.white), onPressed: () => _logout(context)),
-        ],
+        title: const Text('MY DUTY ROSTER', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+        backgroundColor: Colors.black,
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: mockEvents.length,
-        itemBuilder: (context, index) {
-          final event = mockEvents[index];
-          return Card(
-            color: const Color(0xFF1E1E1E), // Dark grey card
-            margin: const EdgeInsets.only(bottom: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              contentPadding: const EdgeInsets.all(16),
-              title: Text(
-                event.title,
-                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+      body: FutureBuilder<List<EventModel>>(
+        future: _myEvents,
+        builder: (context, snapshot) {
+          // 1. Show a loading spinner while waiting for the server
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Colors.white));
+          }
+
+          // 2. Handle errors
+          if (snapshot.hasError) {
+            return Center(child: Text('Error loading events.', style: TextStyle(color: Colors.red.shade300)));
+          }
+
+          // 3. Handle Empty State (No clubs or no events created yet)
+          final events = snapshot.data ?? [];
+          if (events.isEmpty) {
+            return const Center(
+              child: Text(
+                'No upcoming events for your clubs.',
+                style: TextStyle(color: Colors.grey, fontSize: 16),
               ),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Text(
-                  '${event.clubName} • ${event.startTime} - ${event.endTime}',
-                  style: const TextStyle(color: Colors.grey),
-                ),
-              ),
-              trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white),
-              onTap: () {
-                // Navigate to the dashboard for this specific event
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => EventDetailsScreen(event: event)),
-                );
-              },
-            ),
+            );
+          }
+
+          // 4. Build the List of Live Events!
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: events.length,
+            itemBuilder: (context, index) {
+              final event = events[index];
+              return _buildEventCard(event);
+            },
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildEventCard(EventModel event) {
+    return Card(
+      color: Colors.grey.shade900,
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          // TODO: Navigate to your Event Details Screen where the Scanner buttons are!
+          print("Tapped on ${event.title}");
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              // Event Date Bubble
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      _formatDate(event.date).split(' ')[0].toUpperCase(), // Month
+                      style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      _formatDate(event.date).split(' ').last, // Day
+                      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+
+              // Event Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      event.title,
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${event.clubName} • ${event.participationType}',
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.access_time, color: Colors.grey, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${event.startTime} - ${event.endTime}',
+                          style: const TextStyle(color: Colors.grey, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
+            ],
+          ),
+        ),
       ),
     );
   }
