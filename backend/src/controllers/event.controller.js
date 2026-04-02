@@ -261,9 +261,22 @@ const getMyClubEvents = asyncHandler(async (req, res) => {
     );
 });
 
+const getEventAttendees = asyncHandler(async (req, res) => {
+    const { eventId } = req.params;
+
+    // Fetch all attendance documents for this event, and 'populate' the user's name
+    const attendees = await Attendance.find({ event: eventId })
+        .populate("user", "name email");
+
+    return res.status(200).json(
+        new ApiResponse(200, attendees, "Attendees fetched successfully")
+    );
+});
+
 export{
     createEvent,
     registerForEvent,
     registerTeamForEvent,
-    getMyClubEvents
+    getMyClubEvents,
+    getEventAttendees
 }
