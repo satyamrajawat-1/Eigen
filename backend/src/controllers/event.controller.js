@@ -3,6 +3,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/Apiresponse.js";
 import { asyncHandler } from "../utils/AsyncHandler.js";
 import { Attendance } from "../models/attendance.model.js";
+import { User } from "../models/user.model.js";
 const ALLOWED_CLUBS = [
     'CODEBASE', 'KERNEL', 'ARC ROBOTICS', 'ALGORITHMUS', 
     'CYPHER', 'GDF', 'GFG', 'TGCC', 'TECHKNOW'
@@ -273,10 +274,51 @@ const getEventAttendees = asyncHandler(async (req, res) => {
     );
 });
 
+const scanQrCode = asyncHandler(async (req, res) => {
+    const { eventId } = req.params;
+    const { qrCodeIdentifier, scanType } = req.body; // scanType will be 'IN' or 'OUT'
+
+    if (!qrCodeIdentifier || !scanType) {
+        throw new ApiError(400, "QR Code and Scan Type are required.");
+    }
+
+    // 1. Find the User by their unique QR string
+    const student = await User.findOne({ qrCodeIdentifier });
+    if (!student) {
+        throw new ApiError(404, "INVALID QR: Student not found in database.");
+    }
+
+    // 2. Check if they are registered for this specific event
+    const attendanceRecord = await Attendance.findOne({ user: student._id, event: eventId });
+    if (!attendanceRecord) {
+        throw new ApiError(403, `ACCESS DENIED: ${student.name} is NOT registered for this event.`);
+    }
+
+    // 3. Prevent double-scanning (e.g., scanning IN when already IN)
+    if (attendanceRecord.status === scanType) {
+        throw new ApiError(400, `DOUBLE SCAN: ${student.name} is already marked ${scanType}.`);
+    }
+
+    // 4. Update the attendance status and history
+    attendanceRecord.status = scanType;
+    attendanceRecord.scanHistory.push({
+        type: scanType,
+        scannedBy: req.user._id // The volunteer making the scan
+    });
+
+    await attendanceRecord.save();
+
+    // 5. Send a triumphant success message back to the phone!
+    return res.status(200).json(
+        new ApiResponse(200, { studentName: student.name }, `SUCCESS: ${student.name} marked ${scanType}!`)
+    );
+});
+
 export{
     createEvent,
     registerForEvent,
     registerTeamForEvent,
     getMyClubEvents,
-    getEventAttendees
+    getEventAttendees,
+    scanQrCode
 }
