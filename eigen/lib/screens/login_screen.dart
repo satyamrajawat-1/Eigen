@@ -1,7 +1,9 @@
+import 'package:eigen/screens/main_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/auth_service.dart';
-import 'home_screen.dart';
+import '../models/user_model.dart';
+import 'profile_screen.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,43 +14,29 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final AuthService _authService = AuthService();
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
   bool _isLoading = false;
 
   Future<void> _handleLogin() async {
     setState(() => _isLoading = true);
 
-    // 1. Call Google to get the ID Token
-    String? idToken = await _authService.loginWithGoogle();
+    // 1. Call the updated API service (Handles Google auth AND your backend verification)
+    UserModel? loggedInUser = await _authService.loginWithGoogle();
 
-    if (idToken != null) {
-      debugPrint('\n========== GOOGLE ID TOKEN ==========');
-      // Print in chunks of 500 characters to avoid console limits
-      final int chunkSize = 500;
-      for (int i = 0; i < idToken.length; i += chunkSize) {
-        debugPrint(idToken.substring(
-            i,
-            i + chunkSize > idToken.length ? idToken.length : i + chunkSize
-        ));
-      }
-      debugPrint('=====================================\n');
-      // 2. Success! Save the token in the phone's secure vault
-      // (Later, we will swap this for your Node.js JWT, but this works for now)
-      await _storage.write(key: 'auth_token', value: idToken);
-
+    if (loggedInUser != null) {
       if (!mounted) return;
 
-      // 3. Destroy the Login screen and go to the Home Screen
+      // 2. Success! Destroy the Login screen and go directly to the Profile Screen
+      // passing the live API data we just fetched.
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        MaterialPageRoute(builder: (context) => MainScreen(user: loggedInUser)),
       );
     } else {
       // Login failed or was canceled
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login canceled or failed.')),
+          const SnackBar(content: Text('Login failed or server error.')),
         );
       }
     }

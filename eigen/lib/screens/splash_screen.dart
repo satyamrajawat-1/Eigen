@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'package:eigen/screens/main_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'home_screen.dart';
+
+import '../models/user_model.dart';
 import 'login_screen.dart';
+import 'profile_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -20,27 +24,47 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _routeUser() async {
-    // 1. Wait 3 seconds for your logo animation to finish
-    await Future.delayed(const Duration(seconds: 3));
+    // 1. Wait a couple of seconds for the TechKnow animation
+    await Future.delayed(const Duration(seconds: 2));
 
-    // 2. Check the vault for a token
-    String? token = await _storage.read(key: 'auth_token');
+    // 2. Check the vault for the JWT AND the Cached User
+    String? jwtToken = await _storage.read(key: 'jwt_token');
+    String? cachedUserString = await _storage.read(key: 'cached_user');
 
     if (!mounted) return;
 
-    if (token == null) {
-      // 3a. No token -> Go to Login
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-      );
-    } else {
-      // 3b. Token found -> Go to Home Screen
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-      );
+    // 3. If either is missing, they need to log in again
+    if (jwtToken == null || cachedUserString == null) {
+      _goToLogin();
+      return;
     }
+
+    try {
+      // 4. OFFLINE-FIRST MAGIC: Instantly load the user from the cached string!
+      Map<String, dynamic> userJson = jsonDecode(cachedUserString);
+      UserModel cachedUser = UserModel.fromJson(userJson);
+
+      // 5. Immediately show the ID card (No internet required!)
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => MainScreen(user: cachedUser)),
+      );
+
+    } catch (e) {
+      print("Error reading cache. Forcing re-login: $e");
+      // If the cache is corrupted, sweep it out and force a login
+      await _storage.delete(key: 'jwt_token');
+      await _storage.delete(key: 'cached_user');
+      _goToLogin();
+    }
+  }
+
+  void _goToLogin() {
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+    );
   }
 
   @override
@@ -58,7 +82,7 @@ class _SplashScreenState extends State<SplashScreen> {
           curve: Curves.easeOutBack,
           builder: (BuildContext context, double size, Widget? child) {
             return Image.asset(
-              'assets/images/techknow_logo.jpeg',
+              'assets/images/techknow_logo.jpeg', // Or 'techknow_logo.jpeg' depending on your setup!
               width: size,
             );
           },

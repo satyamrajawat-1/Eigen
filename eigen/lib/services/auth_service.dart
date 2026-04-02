@@ -1,50 +1,75 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../models/user_model.dart';
 
 class AuthService {
-  // 1. Grab the global instance
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
   bool _isInitialized = false;
 
-  // 2. A helper to make sure Google is ready before we pop up the login
   Future<void> _ensureInitialized() async {
     if (!_isInitialized) {
       await _googleSignIn.initialize(
         serverClientId: '1038582138858-krl5jmj73vk3776khbqia4ocgqfkkqrl.apps.googleusercontent.com',
         hostedDomain: 'iiitkota.ac.in',
-        // Notice: 'scopes' is gone from here! That fixes the first red line.
       );
       _isInitialized = true;
     }
   }
 
-  Future<String?> loginWithGoogle() async {
+  Future<UserModel?> loginWithGoogle() async {
     try {
       await _ensureInitialized();
 
-      // 3. Trigger the modern Authentication flow.
-      // Notice: We pass the scopes here now using 'scopeHint'! (Fixes the first and second red lines)
+      // 1. Get the Google Passport
       final GoogleSignInAccount googleUser = await _googleSignIn.authenticate(
         scopeHint: ['email', 'profile'],
       );
-
-      // 4. We don't need '.currentUser' anymore because 'authenticate()' directly returned 'googleUser' above! (Fixes the third red line)
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final String? googleIdToken = googleAuth.idToken;
 
-      print("SUCCESS! ID Token Generated.");
-      return googleAuth.idToken;
+      if (googleIdToken == null) throw Exception("Failed to get Google ID Token");
 
-    } on GoogleSignInException catch (e) {
-      // In v7, if the user cancels the popup, it throws an exception instead of returning null
-      print("Google Sign In canceled or failed: ${e.code}");
-      return null;
+      // 2. Send the Google Token to your live Render API
+      final response = await http.post(
+        Uri.parse('https://eigen-hhcm.onrender.com/api/v1/users/login/google'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'googleToken': googleIdToken}),
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = jsonDecode(response.body);
+
+        // 3. Extract the VIP Wristband (JWT) and the User Data
+        final String jwtToken = responseData['data']['token'];
+        final Map<String, dynamic> userDataJson = responseData['data']['user'];
+
+        // 4. Save the JWT securely
+        await _storage.write(key: 'jwt_token', value: jwtToken);
+
+        // 5. Turn the user JSON into a raw string and save it to the vault!
+        String userString = jsonEncode(userDataJson);
+        await _storage.write(key: 'cached_user', value: userString);
+
+        // 6. Convert JSON to our Dart Model and return it
+        return UserModel.fromJson(userDataJson);
+      } else {
+        print("Backend Error: ${response.statusCode} - ${response.body}");
+        return null;
+      }
     } catch (error) {
-      print("Unexpected error during Google Sign In: $error");
+      print("Login Error: $error");
       return null;
     }
   }
 
-  // A quick helper function to log the user out later
+  // --- THIS IS THE LOGOUT LOGIC ---
   Future<void> logout() async {
+    // We MUST delete both the token and the cached user so the next person can't see them!
+    await _storage.delete(key: 'jwt_token');
+    await _storage.delete(key: 'cached_user');
     await _googleSignIn.disconnect();
   }
 }
