@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/event_model.dart';
+import '../models/attendance_model.dart';
 
 class EventService {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
@@ -40,6 +41,34 @@ class EventService {
       }
     } catch (e) {
       print("Error fetching events: $e");
+      return [];
+    }
+  }
+
+  // Moved INSIDE the class so it can see _storage and baseUrl
+  Future<List<AttendanceModel>> fetchAttendees(String eventId) async {
+    try {
+      String? jwtToken = await _storage.read(key: 'jwt_token');
+      if (jwtToken == null) return [];
+
+      // Note: Make sure this URL matches what Rohit sets up!
+      final response = await http.get(
+        Uri.parse('$baseUrl/$eventId/attendees'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = jsonDecode(response.body);
+        final List<dynamic> attendeesJson = responseData['data'];
+
+        return attendeesJson.map((json) => AttendanceModel.fromJson(json)).toList();
+      }
+      return [];
+    } catch (e) {
+      print("Error fetching attendees: $e");
       return [];
     }
   }

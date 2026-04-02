@@ -1,9 +1,9 @@
 // lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // Run `flutter pub add intl` in terminal if you don't have this!
+import 'package:intl/intl.dart';
 import '../models/event_model.dart';
 import '../services/event_service.dart';
-// import 'event_details_screen.dart'; // We will hook this up next!
+import 'event_details_screen.dart'; // <-- UNCOMMENTED THIS!
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -71,7 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
             itemCount: events.length,
             itemBuilder: (context, index) {
               final event = events[index];
-              return _buildEventCard(event);
+              return _buildEventCard(event, context); // Passed context here!
             },
           );
         },
@@ -79,7 +79,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEventCard(EventModel event) {
+  // Added context as a parameter so Navigator knows where it is on the screen
+  Widget _buildEventCard(EventModel event, BuildContext context) {
     return Card(
       color: Colors.grey.shade900,
       margin: const EdgeInsets.only(bottom: 16),
@@ -87,8 +88,13 @@ class _HomeScreenState extends State<HomeScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          // TODO: Navigate to your Event Details Screen where the Scanner buttons are!
-          print("Tapped on ${event.title}");
+          // <-- THIS IS THE MAGIC THAT CHANGES THE SCREEN -->
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => EventDetailsScreen(event: event),
+            ),
+          );
         },
         child: Padding(
           padding: const EdgeInsets.all(16.0),

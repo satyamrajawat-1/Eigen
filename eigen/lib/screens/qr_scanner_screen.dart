@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import '../models/mock_data.dart';
+import '../models/event_model.dart';
 
 class QRScannerScreen extends StatefulWidget {
-  final FestEvent event;
+  final EventModel event;
   final String scanType;
 
   const QRScannerScreen({super.key, required this.event, required this.scanType});
