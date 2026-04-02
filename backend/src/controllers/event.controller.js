@@ -238,10 +238,32 @@ const registerTeamForEvent = asyncHandler(async (req, res) => {
     );
 });
 
+const getMyClubEvents = asyncHandler(async (req, res) => {
+    // 1. Grab the user's club array from the verified JWT token
+    const userClubs = req.user.clubMemberships;
 
+    // 2. If they aren't in any clubs, just return an empty array so the app doesn't crash
+    if (!userClubs || userClubs.length === 0) {
+        return res.status(200).json(
+            new ApiResponse(200, [], "User is not a member of any clubs.")
+        );
+    }
+
+    // 3. Find all events where the 'clubName' matches ANY of the clubs in the user's array
+    // We also use .sort({ date: 1 }) to order them so the soonest events show up first!
+    const events = await Event.find({
+        clubName: { $in: userClubs }
+    }).sort({ date: 1 });
+
+    // 4. Send the list back to the Flutter app
+    return res.status(200).json(
+        new ApiResponse(200, events, "Successfully fetched events for your clubs.")
+    );
+});
 
 export{
     createEvent,
     registerForEvent,
     registerTeamForEvent,
+    getMyClubEvents
 }
