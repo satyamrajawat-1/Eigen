@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Upload, Calendar, Clock, MapPin, Users, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { createEvent } from '../lib/api';
+import { useToast } from '../context/ToastContext';
+import { createEvent, updateEvent } from '../lib/api';
 
 const CLUBS = [
   'CODEBASE', 'KERNEL', 'ARC ROBOTICS', 'ALGORITHMUS',
@@ -33,26 +34,34 @@ const labelStyle = {
   display: 'block',
 };
 
-const AddEventModal = ({ isOpen, onClose, onEventAdded }) => {
-  const { getUserClubs } = useAuth();
+const AddEventModal = ({ isOpen, onClose, onEventAdded, editEvent = null }) => {
+  const { getUserClubs, isAdmin } = useAuth();
+  const toast = useToast();
   const userClubs = getUserClubs();
+  const isEditing = !!editEvent;
+
+  // Set initial club name from available clubs
+  const initialClubName = isEditing
+    ? editEvent.clubName
+    : (userClubs && userClubs.length > 0 ? userClubs[0] : CLUBS[0]);
 
   const [form, setForm] = useState({
-    title: '',
-    clubName: userClubs[0] || '',
-    description: '',
-    date: '',
-    startTime: '',
-    endTime: '',
-    location: 'IIIT KOTA CAMPUS',
-    participationType: 'INDIVIDUAL',
-    minTeamSize: 2,
-    maxTeamSize: 4,
+    title: isEditing ? editEvent.title : '',
+    clubName: initialClubName,
+    description: isEditing ? (editEvent.description || '') : '',
+    date: isEditing ? (editEvent.date ? new Date(editEvent.date).toISOString().split('T')[0] : '') : '',
+    startTime: isEditing ? (editEvent.startTime || '') : '',
+    endTime: isEditing ? (editEvent.endTime || '') : '',
+    location: isEditing ? (editEvent.location || 'IIIT KOTA CAMPUS') : 'IIIT KOTA CAMPUS',
+    participationType: isEditing ? (editEvent.participationType || 'INDIVIDUAL') : 'INDIVIDUAL',
+    minTeamSize: isEditing ? (editEvent.minTeamSize || 2) : 2,
+    maxTeamSize: isEditing ? (editEvent.maxTeamSize || 4) : 4,
     image: null,
   });
 
   const [submitting, setSubmitting] = useState(false);
   const [fileName, setFileName] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -69,35 +78,85 @@ const AddEventModal = ({ isOpen, onClose, onEventAdded }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Validation
+    const requiredFields = ['title', 'clubName', 'date', 'startTime', 'endTime'];
+    const missingFields = requiredFields.filter(field => {
+      const value = form[field];
+      return !value || (typeof value === 'string' && value.trim() === '');
+    });
+
+    if (missingFields.length > 0) {
+      const msg = `Missing required fields: ${missingFields.join(', ')}`;
+      setErrorMessage(msg);
+      toast.error(msg);
+      return;
+    }
+
+    // Image required only for create, not edit
+    if (!isEditing && !form.image) {
+      const msg = 'Event poster image is required. Please upload an image file.';
+      setErrorMessage(msg);
+      toast.error(msg);
+      return;
+    }
+
+    setErrorMessage('');
     setSubmitting(true);
 
     const formData = new FormData();
-    Object.keys(form).forEach(key => {
-      formData.append(key, form[key]);
-    });
+    formData.append('title', form.title);
+    formData.append('clubName', form.clubName);
+    formData.append('description', form.description);
+    formData.append('date', form.date);
+    formData.append('startTime', form.startTime);
+    formData.append('endTime', form.endTime);
+    formData.append('location', form.location);
+    formData.append('participationType', form.participationType);
+    if (form.participationType === 'TEAM') {
+      formData.append('minTeamSize', form.minTeamSize);
+      formData.append('maxTeamSize', form.maxTeamSize);
+    }
+    if (form.image) {
+      formData.append('image', form.image);
+    }
 
     try {
-      const res = await createEvent(formData);
-      if (res.data?.data) {
-        onEventAdded(res.data.data);
+      let res;
+      if (isEditing) {
+        const eventId = editEvent._id || editEvent.id;
+        res = await updateEvent(eventId, formData);
+        const msg = res.data?.message || 'Event updated successfully!';
+        toast.success(msg);
+      } else {
+        res = await createEvent(formData);
+        const msg = res.data?.message || 'Event created successfully!';
+        toast.success(msg);
       }
-      onClose();
+
+      if (res.data?.data) {
+        onEventAdded(res.data.data, isEditing);
+      }
+
       // Reset form after successful submission
       setForm({
-        title: '', clubName: userClubs[0] || '', description: '', date: '',
+        title: '', clubName: initialClubName, description: '', date: '',
         startTime: '', endTime: '', location: 'IIIT KOTA CAMPUS',
         participationType: 'INDIVIDUAL', minTeamSize: 2, maxTeamSize: 4, image: null,
       });
       setFileName('');
+      onClose();
     } catch (error) {
-      console.error('Failed to create event:', error);
-      // Optionally, show an error message to the user
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to save event';
+      setErrorMessage(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const availableClubs = userClubs.length > 0 ? userClubs : CLUBS;
+  // Admin sees all clubs, coordinator sees only their clubs
+  const availableClubs = isAdmin() ? CLUBS : (userClubs && userClubs.length > 0 ? userClubs : CLUBS);
 
   return (
     <AnimatePresence>
@@ -153,7 +212,7 @@ const AddEventModal = ({ isOpen, onClose, onEventAdded }) => {
                 fontWeight: 700,
                 color: 'var(--text-primary)',
               }}>
-                Create Event
+                {isEditing ? 'Edit Event' : 'Create Event'}
               </h2>
               <button
                 onClick={onClose}
@@ -176,6 +235,25 @@ const AddEventModal = ({ isOpen, onClose, onEventAdded }) => {
             </div>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Error Message */}
+              {errorMessage && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  style={{
+                    padding: '12px 16px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: 'var(--radius-md)',
+                    color: '#fca5a5',
+                    fontSize: '13px',
+                    fontFamily: 'var(--font-body)',
+                  }}
+                >
+                  {errorMessage}
+                </motion.div>
+              )}
+
               {/* Event Name */}
               <div>
                 <label style={labelStyle}>Event Name</label>
@@ -187,8 +265,8 @@ const AddEventModal = ({ isOpen, onClose, onEventAdded }) => {
                   required
                   style={inputStyle}
                   onFocus={e => {
-                    e.target.style.borderColor = 'var(--accent-primary)';
-                    e.target.style.boxShadow = '0 0 0 3px rgba(124,58,237,0.1)';
+                    e.target.style.borderColor = 'var(--accent-blue)';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.1)';
                   }}
                   onBlur={e => {
                     e.target.style.borderColor = 'rgba(255,255,255,0.08)';
@@ -208,7 +286,9 @@ const AddEventModal = ({ isOpen, onClose, onEventAdded }) => {
                   style={{ ...inputStyle, cursor: 'pointer' }}
                 >
                   {availableClubs.map(club => (
-                    <option key={club} value={club} style={{ background: '#0d0d15' }}>{club}</option>
+                    <option key={club} value={club} style={{ background: '#0d0d15' }}>
+                      {club}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -266,10 +346,10 @@ const AddEventModal = ({ isOpen, onClose, onEventAdded }) => {
                       style={{
                         flex: 1,
                         padding: '10px',
-                        background: form.participationType === type ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.04)',
-                        border: `1px solid ${form.participationType === type ? 'var(--accent-primary)' : 'rgba(255,255,255,0.08)'}`,
+                        background: form.participationType === type ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${form.participationType === type ? '#3b82f6' : 'rgba(255,255,255,0.08)'}`,
                         borderRadius: 'var(--radius-md)',
-                        color: form.participationType === type ? 'var(--accent-tertiary)' : 'var(--text-secondary)',
+                        color: form.participationType === type ? '#93c5fd' : 'var(--text-secondary)',
                         fontFamily: 'var(--font-display)',
                         fontSize: '13px',
                         fontWeight: 600,
@@ -305,7 +385,9 @@ const AddEventModal = ({ isOpen, onClose, onEventAdded }) => {
 
               {/* Image Upload */}
               <div>
-                <label style={labelStyle}>Event Poster</label>
+                <label style={labelStyle}>
+                  Event Poster {isEditing && <span style={{ fontWeight: 400, textTransform: 'none', color: 'var(--text-muted)' }}>(optional when editing)</span>}
+                </label>
                 <label
                   style={{
                     display: 'flex',
@@ -332,18 +414,19 @@ const AddEventModal = ({ isOpen, onClose, onEventAdded }) => {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || !form.title || !form.clubName || !form.date || !form.startTime || !form.endTime || (!isEditing && !form.image)}
                 className="glow-btn"
                 style={{
                   padding: '14px',
                   fontSize: '15px',
                   letterSpacing: '2px',
                   textTransform: 'uppercase',
-                  opacity: submitting ? 0.6 : 1,
+                  opacity: (submitting || !form.title || !form.clubName || !form.date || !form.startTime || !form.endTime || (!isEditing && !form.image)) ? 0.6 : 1,
                   marginTop: '8px',
+                  cursor: (submitting || !form.title || !form.clubName || !form.date || !form.startTime || !form.endTime || (!isEditing && !form.image)) ? 'not-allowed' : 'pointer',
                 }}
               >
-                {submitting ? 'Creating...' : 'Create Event'}
+                {submitting ? (isEditing ? 'Updating...' : 'Creating...') : (isEditing ? 'Update Event' : 'Create Event')}
               </button>
             </form>
           </motion.div>

@@ -3,9 +3,15 @@ import axios from 'axios';
 const API = axios.create({
   baseURL: 'http://localhost:3000/api/v1',
   withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+});
+
+// Add a request interceptor to handle JSON content-type
+API.interceptors.request.use((config) => {
+  // Only set JSON content-type if we're not sending FormData
+  if (!(config.data instanceof FormData)) {
+    config.headers['Content-Type'] = 'application/json';
+  }
+  return config;
 });
 
 // Auth APIs
@@ -20,9 +26,13 @@ export const logoutUser = () =>
 
 // Event APIs
 export const createEvent = (formData) =>
-  API.post('/events/create', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+  API.post('/events/create', formData);
+
+export const updateEvent = (eventId, formData) =>
+  API.put(`/events/${eventId}/update`, formData);
+
+export const deleteEvent = (eventId) =>
+  API.delete(`/events/${eventId}/delete`);
 
 export const registerForEvent = (eventId) =>
   API.post(`/events/event-register/${eventId}`);
@@ -33,7 +43,6 @@ export const registerTeamForEvent = (eventId, teamData) =>
 export const getMyClubEvents = () =>
   API.get('/events/my-club-events');
 
-// Public: all events grouped by club
 export const getAllEvents = () =>
   API.get('/events/all');
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -8,9 +8,12 @@ import {
 import {
   ArrowLeft, TrendingUp, Users, CalendarDays, Activity,
   BarChart3, Loader2, AlertTriangle, MapPin, Clock,
+  Edit3, Trash2,
 } from 'lucide-react';
-import { getAllEvents } from '../lib/api';
+import { getAllEvents, getMyClubEvents, deleteEvent } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import AddEventModal from '../components/AddEventModal';
 
 /* ───── Tooltip ───── */
 const CustomTooltip = ({ active, payload, label }) => {
@@ -86,54 +89,121 @@ const CHART_COLORS = ['#7c3aed', '#3b82f6', '#06b6d4', '#10b981', '#f59e0b', '#e
 const CLUB_ORDER = ['CODEBASE', 'KERNEL', 'ARC ROBOTICS', 'ALGORITHMUS', 'CYPHER', 'GDF', 'GFG', 'TGCC', 'TECHKNOW'];
 
 /* ═══════════════════════════════════════════ */
-/*  ADMIN DASHBOARD                            */
+/*  DASHBOARD (ADMIN + COORDINATOR)            */
 /* ═══════════════════════════════════════════ */
-const AdminDashboard = () => {
+const Dashboard = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAdmin, isCoordinator, getUserClubs } = useAuth();
+  const toast = useToast();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [allEvents, setAllEvents] = useState([]);
   const [clubData, setClubData] = useState({});
+  const [deletingId, setDeletingId] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+
+  const userIsAdmin = isAdmin();
+  const userIsCoordinator = isCoordinator();
+  const userClubs = getUserClubs();
 
   /* ── Fetch data ── */
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const res = await getAllEvents();
-        const grouped = res.data?.data || {};
-        setClubData(grouped);
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
 
-        // Flatten all events
-        const flat = [];
-        Object.entries(grouped).forEach(([clubName, events]) => {
-          events.forEach(evt => flat.push({ ...evt, clubName }));
+      let grouped = {};
+
+      if (userIsAdmin) {
+        // Admin sees ALL events
+        const res = await getAllEvents();
+        grouped = res.data?.data || {};
+      } else if (userIsCoordinator) {
+        // Coordinator sees only their club events
+        const res = await getMyClubEvents();
+        const events = res.data?.data || [];
+        // Group by club name for consistency
+        events.forEach(evt => {
+          if (!grouped[evt.clubName]) grouped[evt.clubName] = [];
+          grouped[evt.clubName].push(evt);
         });
-        setAllEvents(flat);
-      } catch (err) {
-        console.error('Failed to fetch admin data:', err);
-        setError('Failed to load dashboard data. Make sure the backend is running.');
-      } finally {
-        setLoading(false);
       }
-    };
+
+      setClubData(grouped);
+
+      // Flatten all events
+      const flat = [];
+      Object.entries(grouped).forEach(([clubName, events]) => {
+        events.forEach(evt => flat.push({ ...evt, clubName }));
+      });
+      setAllEvents(flat);
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'Failed to load dashboard data. Make sure the backend is running.';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, [userIsAdmin, userIsCoordinator]);
+
+  useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
+
+  /* ── Delete event ── */
+  const handleDelete = async (evt) => {
+    const eventId = evt._id || evt.id;
+    if (!eventId) return;
+    setDeletingId(eventId);
+    try {
+      const res = await deleteEvent(eventId);
+      const msg = res.data?.message || 'Event deleted successfully!';
+      toast.success(msg);
+      // Remove from local state
+      setAllEvents(prev => prev.filter(e => (e._id || e.id) !== eventId));
+      setClubData(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(club => {
+          updated[club] = updated[club].filter(e => (e._id || e.id) !== eventId);
+        });
+        return updated;
+      });
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'Failed to delete event.';
+      toast.error(msg);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  /* ── Edit event ── */
+  const handleEdit = (evt) => {
+    setEditingEvent(evt);
+    setShowEditModal(true);
+  };
+
+  const handleEventUpdated = () => {
+    setShowEditModal(false);
+    setEditingEvent(null);
+    fetchData(); // Re-fetch from backend
+  };
 
   /* ── Computed stats ── */
   const totalEvents = allEvents.length;
+  const displayClubs = userIsAdmin ? CLUB_ORDER : userClubs;
   const totalClubsWithEvents = Object.values(clubData).filter(arr => arr.length > 0).length;
   const teamEvents = allEvents.filter(e => e.participationType === 'TEAM').length;
   const individualEvents = allEvents.filter(e => e.participationType !== 'TEAM').length;
 
   // Events per club chart data
-  const clubChartData = CLUB_ORDER.map((club, i) => ({
+  const chartClubs = userIsAdmin ? CLUB_ORDER : userClubs;
+  const clubChartData = chartClubs.map((club, i) => ({
     club: club.length > 8 ? club.slice(0, 7) + '…' : club,
     fullName: club,
     events: (clubData[club] || []).length,
-    color: CHART_COLORS[i % CHART_COLORS.length],
+    color: CHART_COLORS[CLUB_ORDER.indexOf(club) % CHART_COLORS.length],
   }));
 
   // Participation type pie
@@ -161,6 +231,11 @@ const AdminDashboard = () => {
     .slice(0, 8);
 
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+
+  const dashboardTitle = userIsAdmin ? 'Admin Dashboard' : 'Coordinator Dashboard';
+  const dashboardSubtitle = userIsAdmin
+    ? `EIGEN 2026 • ${user?.name || 'Admin'}`
+    : `${userClubs.join(', ')} • ${user?.name || 'Coordinator'}`;
 
   /* ── Loading state ── */
   if (loading) {
@@ -190,7 +265,7 @@ const AdminDashboard = () => {
           {error}
         </p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => fetchData()}
           style={{
             padding: '10px 24px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
             borderRadius: '10px', color: 'white', fontFamily: 'var(--font-display)', fontSize: '13px',
@@ -238,13 +313,13 @@ const AdminDashboard = () => {
                 fontFamily: 'var(--font-display)', fontSize: '28px', fontWeight: 800,
                 color: 'white', letterSpacing: '-0.5px',
               }}>
-                Admin Dashboard
+                {dashboardTitle}
               </h1>
               <p style={{
                 fontFamily: 'var(--font-mono)', fontSize: '12px',
                 color: 'rgba(255,255,255,0.3)', letterSpacing: '2px', textTransform: 'uppercase',
               }}>
-                EIGEN 2026 • {user?.name || 'Admin'}
+                {dashboardSubtitle}
               </p>
             </div>
           </div>
@@ -264,7 +339,7 @@ const AdminDashboard = () => {
           gap: '20px', marginBottom: '32px',
         }}>
           <StatCard icon={CalendarDays} label="Total Events" value={totalEvents} color="#7c3aed" delay={0.1} />
-          <StatCard icon={Users} label="Active Clubs" value={totalClubsWithEvents} color="#3b82f6" delay={0.15} />
+          <StatCard icon={Users} label={userIsAdmin ? "Active Clubs" : "Your Clubs"} value={userIsAdmin ? totalClubsWithEvents : userClubs.length} color="#3b82f6" delay={0.15} />
           <StatCard icon={Activity} label="Team Events" value={teamEvents} color="#10b981" delay={0.2} />
           <StatCard icon={TrendingUp} label="Solo Events" value={individualEvents} color="#f59e0b" delay={0.25} />
         </div>
@@ -309,8 +384,8 @@ const AdminDashboard = () => {
                   />
                   <Tooltip content={<CustomTooltip />} />
                   <Bar dataKey="events" name="Events" radius={[6, 6, 0, 0]}>
-                    {clubChartData.map((_, i) => (
-                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                    {clubChartData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -419,7 +494,7 @@ const AdminDashboard = () => {
           </motion.div>
         )}
 
-        {/* Events Table */}
+        {/* Events Table with Edit/Delete Actions */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -454,76 +529,131 @@ const AdminDashboard = () => {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {(upcomingEvents.length > 0 ? upcomingEvents : allEvents.slice(0, 10)).map((evt, i) => (
-                <motion.div
-                  key={evt._id || i}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 + i * 0.04 }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '16px',
-                    padding: '16px 18px',
-                    background: 'rgba(255,255,255,0.02)',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(255,255,255,0.04)',
-                    transition: 'background 0.2s ease',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
-                >
-                  {/* Club badge */}
-                  <div style={{
-                    minWidth: '100px', padding: '5px 12px', borderRadius: '8px',
-                    background: `${CHART_COLORS[CLUB_ORDER.indexOf(evt.clubName) % CHART_COLORS.length]}18`,
-                    border: `1px solid ${CHART_COLORS[CLUB_ORDER.indexOf(evt.clubName) % CHART_COLORS.length]}30`,
-                    fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 600,
-                    color: CHART_COLORS[CLUB_ORDER.indexOf(evt.clubName) % CHART_COLORS.length],
-                    letterSpacing: '0.5px', textAlign: 'center', textTransform: 'uppercase',
-                  }}>
-                    {evt.clubName}
-                  </div>
+              {(upcomingEvents.length > 0 ? upcomingEvents : allEvents.slice(0, 10)).map((evt, i) => {
+                const eventId = evt._id || evt.id;
+                const isDeleting = deletingId === eventId;
+                const clubIndex = CLUB_ORDER.indexOf(evt.clubName);
+                const color = CHART_COLORS[clubIndex >= 0 ? clubIndex % CHART_COLORS.length : 0];
 
-                  {/* Event info */}
-                  <div style={{ flex: 1 }}>
+                return (
+                  <motion.div
+                    key={eventId || i}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.5 + i * 0.04 }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '16px',
+                      padding: '16px 18px',
+                      background: 'rgba(255,255,255,0.02)',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(255,255,255,0.04)',
+                      transition: 'background 0.2s ease',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+                  >
+                    {/* Club badge */}
                     <div style={{
-                      fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 600,
-                      color: 'white', marginBottom: '4px',
+                      minWidth: '100px', padding: '5px 12px', borderRadius: '8px',
+                      background: `${color}18`,
+                      border: `1px solid ${color}30`,
+                      fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 600,
+                      color: color,
+                      letterSpacing: '0.5px', textAlign: 'center', textTransform: 'uppercase',
                     }}>
-                      {evt.title}
+                      {evt.clubName}
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'rgba(255,255,255,0.35)' }}>
-                        <CalendarDays size={10} />{formatDate(evt.date)}
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'rgba(255,255,255,0.35)' }}>
-                        <Clock size={10} />{evt.startTime}–{evt.endTime}
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'rgba(255,255,255,0.35)' }}>
-                        <MapPin size={10} />{evt.location}
-                      </span>
-                    </div>
-                  </div>
 
-                  {/* Type badge */}
-                  <div style={{
-                    padding: '4px 12px', borderRadius: '8px',
-                    background: evt.participationType === 'TEAM' ? 'rgba(236,72,153,0.1)' : 'rgba(59,130,246,0.1)',
-                    border: `1px solid ${evt.participationType === 'TEAM' ? 'rgba(236,72,153,0.2)' : 'rgba(59,130,246,0.2)'}`,
-                    fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 600,
-                    color: evt.participationType === 'TEAM' ? '#ec4899' : '#3b82f6',
-                    letterSpacing: '1px',
-                  }}>
-                    {evt.participationType === 'TEAM' ? `TEAM ${evt.minTeamSize}-${evt.maxTeamSize}` : 'SOLO'}
-                  </div>
-                </motion.div>
-              ))}
+                    {/* Event info */}
+                    <div style={{ flex: 1 }}>
+                      <div style={{
+                        fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: 600,
+                        color: 'white', marginBottom: '4px',
+                      }}>
+                        {evt.title}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'rgba(255,255,255,0.35)' }}>
+                          <CalendarDays size={10} />{formatDate(evt.date)}
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'rgba(255,255,255,0.35)' }}>
+                          <Clock size={10} />{evt.startTime}–{evt.endTime}
+                        </span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'rgba(255,255,255,0.35)' }}>
+                          <MapPin size={10} />{evt.location}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Type badge */}
+                    <div style={{
+                      padding: '4px 12px', borderRadius: '8px',
+                      background: evt.participationType === 'TEAM' ? 'rgba(236,72,153,0.1)' : 'rgba(59,130,246,0.1)',
+                      border: `1px solid ${evt.participationType === 'TEAM' ? 'rgba(236,72,153,0.2)' : 'rgba(59,130,246,0.2)'}`,
+                      fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 600,
+                      color: evt.participationType === 'TEAM' ? '#ec4899' : '#3b82f6',
+                      letterSpacing: '1px',
+                    }}>
+                      {evt.participationType === 'TEAM' ? `TEAM ${evt.minTeamSize}-${evt.maxTeamSize}` : 'SOLO'}
+                    </div>
+
+                    {/* Edit & Delete Actions */}
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        onClick={() => handleEdit(evt)}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          width: '32px', height: '32px',
+                          background: 'rgba(59,130,246,0.1)',
+                          border: '1px solid rgba(59,130,246,0.2)',
+                          borderRadius: '8px', cursor: 'pointer',
+                          color: '#93c5fd', transition: 'all 0.2s ease',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.2)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.1)'; }}
+                        title="Edit Event"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(evt)}
+                        disabled={isDeleting}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          width: '32px', height: '32px',
+                          background: 'rgba(239,68,68,0.1)',
+                          border: '1px solid rgba(239,68,68,0.2)',
+                          borderRadius: '8px', cursor: isDeleting ? 'not-allowed' : 'pointer',
+                          color: '#fca5a5', transition: 'all 0.2s ease',
+                          opacity: isDeleting ? 0.5 : 1,
+                        }}
+                        onMouseEnter={e => { if (!isDeleting) e.currentTarget.style.background = 'rgba(239,68,68,0.2)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+                        title="Delete Event"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
           )}
         </motion.div>
 
       </div>
+
+      {/* Edit Event Modal */}
+      {showEditModal && (
+        <AddEventModal
+          isOpen={showEditModal}
+          onClose={() => { setShowEditModal(false); setEditingEvent(null); }}
+          onEventAdded={handleEventUpdated}
+          editEvent={editingEvent}
+        />
+      )}
     </div>
   );
 };
 
-export default AdminDashboard;
+export default Dashboard;

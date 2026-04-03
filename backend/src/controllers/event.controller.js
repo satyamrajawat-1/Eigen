@@ -1,3 +1,4 @@
+import fs from "fs";
 import { Event } from "../models/event.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/Apiresponse.js";
@@ -25,6 +26,11 @@ const createEvent = asyncHandler(async (req, res) => {
         endTime, location, participationType, minTeamSize, maxTeamSize 
     } = req.body;
 
+    console.log('=== CREATE EVENT REQUEST ===');
+    console.log('User:', req.user?.email, 'Roles:', req.user?.roles);
+    console.log('Body:', req.body);
+    console.log('File:', req.file?.filename);
+
     // 1. Text Field Validation
     if (!title || !clubName || !date || !startTime || !endTime) {
         throw new ApiError(400, "TITLE, CLUBNAME, DATE, START TIME, AND END TIME ARE REQUIRED");
@@ -35,6 +41,9 @@ const createEvent = asyncHandler(async (req, res) => {
     if (!imageLocalPath) {
         throw new ApiError(400, "EVENT IMAGE (POSTER) IS REQUIRED");
     }
+
+    // Clean the image path: remove "public/" prefix so it can be served via static middleware
+    const cleanImagePath = imageLocalPath.replace(/^public[/\\]/, '').replace(/\\/g, '/');
 
     const upperClubName = clubName.toUpperCase();
     const upperTitle = title.toUpperCase().trim();
@@ -55,6 +64,7 @@ const createEvent = asyncHandler(async (req, res) => {
 
         // If their email isn't in the map, they aren't a recognized coordinator
         if (!theirCoordinatedClub) {
+            console.log('User not authorized. Email:', userEmailLower);
             throw new ApiError(403, "ACCESS DENIED: ONLY ADMINS AND OFFICIAL CLUB COORDINATORS CAN CREATE EVENTS.");
         }
 
@@ -98,9 +108,11 @@ const createEvent = asyncHandler(async (req, res) => {
         participationType: pType,
         minTeamSize: finalMin,
         maxTeamSize: finalMax,
-        image: imageLocalPath, 
+        image: cleanImagePath, 
         createdBy: req.user._id
     });
+
+    console.log('Event created successfully:', newEvent._id);
 
     return res.status(201).json(
         new ApiResponse(201, newEvent, `EVENT '${newEvent.title}' CREATED SUCCESSFULLY`)

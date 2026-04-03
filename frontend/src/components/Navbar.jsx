@@ -1,17 +1,30 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { useNavigate } from 'react-router-dom';
+import { logoutUser } from '../lib/api';
 import { LogOut, Plus, LayoutDashboard, User } from 'lucide-react';
 
 const Navbar = ({ visible, onAddEvent }) => {
   const { user, isAuthenticated, isCoordinator, isAdmin, logout } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const res = await logoutUser();
+      const msg = res.data?.message || 'Logged out successfully';
+      toast.success(msg);
+    } catch (err) {
+      toast.info('Logged out locally.');
+    }
     logout();
     navigate('/');
   };
+
+  const showAddEvent = isAuthenticated && (isCoordinator() || isAdmin());
+  const showDashboard = isAuthenticated && (isAdmin() || isCoordinator());
 
   return (
     <AnimatePresence>
@@ -73,8 +86,8 @@ const Navbar = ({ visible, onAddEvent }) => {
               alignItems: 'center',
               gap: '12px',
             }}>
-              {/* Coordinator: Add Event button */}
-              {isAuthenticated && isCoordinator() && (
+              {/* Add Event button — ADMIN or COORDINATOR only */}
+              {showAddEvent && (
                 <motion.button
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -110,13 +123,13 @@ const Navbar = ({ visible, onAddEvent }) => {
                 </motion.button>
               )}
 
-              {/* Admin: Dashboard button */}
-              {isAuthenticated && isAdmin() && (
+              {/* Dashboard button — ADMIN or COORDINATOR */}
+              {showDashboard && (
                 <motion.button
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.4, delay: 0.35 }}
-                  onClick={() => navigate('/admin')}
+                  onClick={() => navigate('/dashboard')}
                   style={{
                     display: 'flex',
                     alignItems: 'center',

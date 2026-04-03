@@ -2,14 +2,16 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useScroll } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getAllEvents } from '../lib/api';
+import { useToast } from '../context/ToastContext';
+import { getAllEvents, deleteEvent } from '../lib/api';
 import AddEventModal from '../components/AddEventModal';
 import RegisterEventModal from '../components/RegisterEventModal';
-import { Calendar, Clock, MapPin, Users, User as UserIcon, Plus, LogOut, LayoutDashboard } from 'lucide-react';
+import FestPassModal from '../components/FestPassModal';
+import { Calendar, Clock, MapPin, Users, User as UserIcon, Plus, LogOut, LayoutDashboard, Edit3, Trash2, Ticket } from 'lucide-react';
 
 const TAGLINE = 'Where Innovation Meets Celebration';
 
-// Club metadata (colors, gradients, taglines — not stored in DB)
+// Club metadata (colors, gradients, taglines — UI-only, not stored in DB)
 const CLUB_META = {
   'CODEBASE':    { gradient: 'linear-gradient(135deg,#7c3aed,#3b82f6)', accentColor: '#7c3aed', tagline: 'Code. Create. Conquer.', description: 'The premier coding club of IIIT Kota, driving innovation through competitive programming, hackathons, and open-source contributions.' },
   'KERNEL':      { gradient: 'linear-gradient(135deg,#06b6d4,#3b82f6)', accentColor: '#06b6d4', tagline: 'Deep Dive into Systems.', description: 'Exploring the depths of operating systems, low-level programming, and systems architecture.' },
@@ -24,31 +26,7 @@ const CLUB_META = {
 
 const CLUB_ORDER = ['CODEBASE','KERNEL','ARC ROBOTICS','ALGORITHMUS','CYPHER','GDF','GFG','TGCC','TECHKNOW'];
 
-// Fallback event images
-const FALLBACK_IMAGES = {
-  'cb-1':'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=400&h=200&fit=crop',
-  'cb-2':'https://images.unsplash.com/photo-1516116216624-53e697fedbea?w=400&h=200&fit=crop',
-  'cb-3':'https://images.unsplash.com/photo-1547658719-da2b51169166?w=400&h=200&fit=crop',
-  'kn-1':'https://images.unsplash.com/photo-1629654297299-c8506221ca97?w=400&h=200&fit=crop',
-  'kn-2':'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=400&h=200&fit=crop',
-  'ar-1':'https://images.unsplash.com/photo-1561557944-6e7860d1a7eb?w=400&h=200&fit=crop',
-  'ar-2':'https://images.unsplash.com/photo-1518770660439-4636190af475?w=400&h=200&fit=crop',
-  'al-1':'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=400&h=200&fit=crop',
-  'al-2':'https://images.unsplash.com/photo-1596495577886-d920f1fb7238?w=400&h=200&fit=crop',
-  'cy-1':'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=400&h=200&fit=crop',
-  'cy-2':'https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?w=400&h=200&fit=crop',
-  'gd-1':'https://images.unsplash.com/photo-1556438064-2d7646166914?w=400&h=200&fit=crop',
-  'gd-2':'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&h=200&fit=crop',
-  'gf-1':'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=400&h=200&fit=crop',
-  'gf-2':'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=400&h=200&fit=crop',
-  'tg-1':'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=400&h=200&fit=crop',
-  'tg-2':'https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=400&h=200&fit=crop',
-  'tk-1':'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&h=200&fit=crop',
-  'tk-2':'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400&h=200&fit=crop',
-  'tk-3':'https://images.unsplash.com/photo-1559136555-9303baea8ebd?w=400&h=200&fit=crop',
-};
-
-// Generic fallback images by index for real DB events without specific mapping
+// Generic fallback images for events without backend images
 const GENERIC_IMAGES = [
   'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=400&h=200&fit=crop',
   'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=400&h=200&fit=crop',
@@ -71,12 +49,13 @@ const preloadBgImages = () => {
   return images;
 };
 
-// Build CLUBS array from API data (grouped by club), falling back to mock
+// Build CLUBS array from API data (grouped by club)
 const buildClubsFromApi = (grouped) => {
   return CLUB_ORDER.map(name => {
     const meta = CLUB_META[name] || {};
     const events = (grouped[name] || []).map((evt, idx) => ({
       id: evt._id || evt.id,
+      _id: evt._id,
       title: evt.title,
       description: evt.description || '',
       date: evt.date,
@@ -86,10 +65,11 @@ const buildClubsFromApi = (grouped) => {
       participationType: evt.participationType,
       minTeamSize: evt.minTeamSize,
       maxTeamSize: evt.maxTeamSize,
+      clubName: evt.clubName || name,
       image: evt.image || GENERIC_IMAGES[idx % GENERIC_IMAGES.length],
     }));
     return { id: name.toLowerCase().replace(/\s+/g, '-'), name, events, ...meta };
-  }); // Keep all clubs, even if they have 0 events currently
+  });
 };
 
 const Landing = () => {
@@ -97,7 +77,8 @@ const Landing = () => {
   const canvasRef = useRef(null);
   const imagesRef = useRef([]);
   const navigate = useNavigate();
-  const { isAuthenticated, isCoordinator, isAdmin, logout } = useAuth();
+  const { user, isAuthenticated, isCoordinator, isAdmin, isParticipant, getUserClubs, logout } = useAuth();
+  const toast = useToast();
 
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -108,34 +89,63 @@ const Landing = () => {
   const [typedText, setTypedText] = useState('');
   const [showCursor, setShowCursor] = useState(false);
   const [showAddEvent, setShowAddEvent] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showRegister, setShowRegister] = useState(false);
   const [bgLoaded, setBgLoaded] = useState(false);
   const [bgProgress, setBgProgress] = useState(0);
-  const [clubs, setClubs] = useState([]); // start empty, replace with real
-  const [dataSource, setDataSource] = useState('mock'); // 'mock' | 'api'
+  const [clubs, setClubs] = useState([]);
+  const [deletingEventId, setDeletingEventId] = useState(null);
+  const [showFestPass, setShowFestPass] = useState(false);
 
   // Derived
   const NUM_PHASES = 1 + clubs.length;
   const CONTAINER_VH = NUM_PHASES * 150 + 100;
 
+  // Determine user role for RBAC
+  const userIsAdmin = isAuthenticated && isAdmin();
+  const userIsCoordinator = isAuthenticated && isCoordinator();
+  const userIsParticipant = isAuthenticated && !userIsAdmin && !userIsCoordinator;
+  const userClubs = getUserClubs();
+
+  // Check if the user can manage (edit/delete) events for a given club
+  const canManageClub = (clubName) => {
+    if (userIsAdmin) return true;
+    if (userIsCoordinator && userClubs.includes(clubName)) return true;
+    return false;
+  };
+
+  // Check if user should see the Register button for an event
+  const canRegister = (evt) => {
+    // Admin never registers
+    if (userIsAdmin) return false;
+    // Coordinator never registers for their own club's events
+    if (userIsCoordinator && userClubs.includes(evt.clubName)) return false;
+    // Everyone else (participants, non-auth users) can register
+    return true;
+  };
+
   // Fetch real events from backend
-  useEffect(() => {
+  const fetchEvents = useCallback(() => {
     getAllEvents()
       .then(res => {
         const grouped = res.data?.data || {};
         const built = buildClubsFromApi(grouped);
-        // Always set clubs so club sections render (even with 0 events)
         setClubs(built);
-        setDataSource('api');
+        // Only show toast on initial load if we want — skip for cleanliness
       })
-      .catch(() => {
-        // Backend unreachable — still build club shells with empty events
+      .catch((err) => {
+        const msg = err?.response?.data?.message || 'Failed to fetch events. Backend may be offline.';
+        toast.error(msg);
+        // Build club shells with empty events
         const built = buildClubsFromApi({});
         setClubs(built);
-        setDataSource('mock');
       });
   }, []);
+
+  useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
 
   // Preload bg images
   useEffect(() => {
@@ -228,40 +238,91 @@ const Landing = () => {
 
   const handleEvtReg = (evt) => {
     if (!isAuthenticated) { navigate('/auth'); return; }
-    setSelectedEvent(evt); setShowRegister(true);
+    setSelectedEvent(evt);
+    setShowRegister(true);
   };
 
-  const handleEventAdded = (newEvent) => {
-    setClubs(prevClubs => {
-      const newClubs = [...prevClubs];
-      const clubIndex = newClubs.findIndex(club => club.name === newEvent.clubName);
-      if (clubIndex !== -1) {
-        newClubs[clubIndex].events.push({
-          id: newEvent._id,
-          title: newEvent.title,
-          description: newEvent.description,
-          date: newEvent.date,
-          startTime: newEvent.startTime,
-          endTime: newEvent.endTime,
-          location: newEvent.location,
-          participationType: newEvent.participationType,
-          minTeamSize: newEvent.minTeamSize,
-          maxTeamSize: newEvent.maxTeamSize,
-          image: newEvent.image,
-        });
-      }
-      return newClubs;
-    });
+  const handleEditEvent = (evt) => {
+    setEditingEvent(evt);
+    setShowAddEvent(true);
+  };
+
+  const handleDeleteEvent = async (evt) => {
+    const eventId = evt._id || evt.id;
+    if (!eventId) return;
+    setDeletingEventId(eventId);
+
+    try {
+      const res = await deleteEvent(eventId);
+      const msg = res.data?.message || 'Event deleted successfully!';
+      toast.success(msg);
+      // Remove from local state
+      setClubs(prevClubs => {
+        return prevClubs.map(c => ({
+          ...c,
+          events: c.events.filter(e => (e._id || e.id) !== eventId),
+        }));
+      });
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'Failed to delete event.';
+      toast.error(msg);
+    } finally {
+      setDeletingEventId(null);
+    }
+  };
+
+  const handleEventAdded = (newEvent, isEdit = false) => {
+    if (isEdit) {
+      // Refresh from backend to get fresh data
+      fetchEvents();
+    } else {
+      setClubs(prevClubs => {
+        const newClubs = [...prevClubs];
+        const clubIndex = newClubs.findIndex(c => c.name === newEvent.clubName);
+        if (clubIndex !== -1) {
+          newClubs[clubIndex] = {
+            ...newClubs[clubIndex],
+            events: [...newClubs[clubIndex].events, {
+              id: newEvent._id,
+              _id: newEvent._id,
+              title: newEvent.title,
+              description: newEvent.description,
+              date: newEvent.date,
+              startTime: newEvent.startTime,
+              endTime: newEvent.endTime,
+              location: newEvent.location,
+              participationType: newEvent.participationType,
+              minTeamSize: newEvent.minTeamSize,
+              maxTeamSize: newEvent.maxTeamSize,
+              clubName: newEvent.clubName,
+              image: newEvent.image,
+            }],
+          };
+        }
+        return newClubs;
+      });
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const { logoutUser } = await import('../lib/api');
+      const res = await logoutUser();
+      const msg = res.data?.message || 'Logged out successfully';
+      toast.success(msg);
+    } catch (err) {
+      // Even if API fails, log out locally
+      toast.info('Logged out locally.');
+    }
+    logout();
+    navigate('/');
   };
 
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
 
   const getEventImg = (evt, idx) => {
-    if (!evt.image) return FALLBACK_IMAGES[evt.id] || GENERIC_IMAGES[idx % GENERIC_IMAGES.length];
-    // If it's already a full URL (http/https), use directly
+    if (!evt.image) return GENERIC_IMAGES[idx % GENERIC_IMAGES.length];
     if (evt.image.startsWith('http://') || evt.image.startsWith('https://')) return evt.image;
-    // Backend stores as "public/temp/filename.png" — strip the "public/" prefix
-    // and serve via the backend static server on port 3000
     const cleanPath = evt.image.replace(/^public[/\\]/, '').replace(/\\/g, '/');
     return `http://localhost:3000/${cleanPath}`;
   };
@@ -275,16 +336,21 @@ const Landing = () => {
         .e-content { padding: 90px 48px 32px; }
         .e-grid {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 18px;
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+          grid-auto-rows: min-content;
+          gap: 24px;
           overflow-y: auto;
-          max-height: calc(100vh - 240px);
-          padding-right: 4px;
-          padding-bottom: 8px;
-          align-items: start;
+          overflow-x: hidden;
+          max-height: calc(100vh - 200px);
+          padding-right: 8px;
+          padding-bottom: 32px;
+          align-items: stretch;
+          scrollbar-width: none; /* Firefox */
+          -ms-overflow-style: none;  /* IE and Edge */
         }
-        .e-grid::-webkit-scrollbar{ width:4px; }
-        .e-grid::-webkit-scrollbar-thumb{ background:rgba(255,255,255,0.2); border-radius:4px; }
+        .e-grid::-webkit-scrollbar { 
+          display: none; /* Chrome, Safari and Opera */
+        }
 
         /* ---- Event card ---- */
         .e-card {
@@ -298,17 +364,20 @@ const Landing = () => {
           cursor: pointer;
           display: flex;
           flex-direction: column;
+          height: 100%;
+          position: relative;
         }
         .e-card:hover {
           transform: translateY(-4px);
           border-color: rgba(255,255,255,0.22);
           box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+          z-index: 10;
         }
-        /* Shorter image container to ensure full card fits on screen */
         .e-img-wrap {
           position: relative;
           width: 100%;
           height: 200px;
+          min-height: 200px;
           overflow: hidden;
           background: rgba(0,0,0,0.4);
           flex-shrink: 0;
@@ -317,31 +386,40 @@ const Landing = () => {
           justify-content: center;
         }
         .e-img { width:100%; height:100%; object-fit:cover; display:block; position:absolute; inset:0; }
-        /* A blurred background behind the contain image to fill empty space nicely */
         .e-img-bg { position: absolute; inset: -10%; width: 120%; height: 120%; object-fit: cover; filter: blur(15px); opacity: 0.5; z-index: 0; }
         .e-img-fg { position: relative; width:100%; height:100%; object-fit:contain; display:block; z-index: 1; }
-
         .e-fb  { width:100%; height:100%; display:flex; align-items:center; justify-content:center;
                   font-family:var(--font-display); font-size:36px; font-weight:900;
                   color:rgba(255,255,255,0.15); letter-spacing:-1px; position:absolute; inset:0; z-index: 2; }
-        .e-body { padding: 16px; flex: 1; display:flex; flex-direction:column; min-height: fit-content; }
+        .e-body { padding: 18px; flex: 1; display:flex; flex-direction:column; justify-content: space-between; }
         .e-reg-btn {
           width:100%; padding:10px; border-radius:var(--radius-md);
           font-family:var(--font-display); font-size:12px; font-weight:600;
           letter-spacing:1px; text-transform:uppercase; color:white; cursor:pointer;
           background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.14);
           transition: background 0.2s, border-color 0.2s;
+          margin-top: auto;
         }
         .e-reg-btn:hover { background:rgba(255,255,255,0.16); border-color:rgba(255,255,255,0.28); }
-        .e-admin-btns {
-          display: flex; gap: 6px; margin-top: 6px;
+        .e-manage-btns {
+          display: flex; gap: 8px; margin-top: auto; padding-top: 12px;
         }
-        .e-admin-btn {
-          flex:1; padding:7px; border-radius:var(--radius-sm);
-          font-family:var(--font-display); font-size:10px; font-weight:600;
+        .e-manage-btn {
+          flex:1; padding:8px; border-radius:var(--radius-sm);
+          font-family:var(--font-display); font-size:11px; font-weight:600;
           letter-spacing:0.5px; text-transform:uppercase; cursor:pointer;
           transition: background 0.2s, border-color 0.2s;
+          display: flex; align-items: center; justify-content: center; gap: 5px;
+
         }
+        .e-edit-btn {
+          background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.25); color: #93c5fd;
+        }
+        .e-edit-btn:hover { background: rgba(59,130,246,0.22); border-color: rgba(59,130,246,0.4); }
+        .e-delete-btn {
+          background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5;
+        }
+        .e-delete-btn:hover { background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.35); }
 
         /* ---- Tablet ---- */
         @media (max-width:1024px){
@@ -349,16 +427,15 @@ const Landing = () => {
           .e-grid { grid-template-columns: repeat(2, 1fr); gap:14px; max-height:calc(100vh - 200px); }
           .e-img-wrap { height: 180px; }
         }
-        /* ---- Mobile (≤640px) → 2 column grid ---- */
+        /* ---- Mobile ---- */
         @media (max-width:640px){
           .e-content { padding: 68px 12px 16px; }
           .e-grid { grid-template-columns: repeat(2, 1fr); gap:10px; max-height:calc(100vh - 180px); }
           .e-img-wrap { height: 140px; }
           .e-body { padding:10px; }
           .e-fb { font-size:24px; }
-          .e-admin-btns { flex-direction: column; }
+          .e-manage-btns { flex-direction: column; }
         }
-        /* ---- Very small (≤360px) → 1 column ---- */
         @media (max-width:360px){
           .e-grid { grid-template-columns: 1fr; }
           .e-img-wrap { height: 200px; }
@@ -410,24 +487,40 @@ const Landing = () => {
             }}>
               <div style={{ flex:1 }} />
               <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-                {isAuthenticated && (isCoordinator() || isAdmin()) && (
-                  <button onClick={() => setShowAddEvent(true)} style={{
+                {/* Add Event — ADMIN or COORDINATOR only */}
+                {isAuthenticated && (userIsAdmin || userIsCoordinator) && (
+                  <button onClick={() => { setEditingEvent(null); setShowAddEvent(true); }} style={{
                     display:'flex', alignItems:'center', gap:6, padding:'7px 16px',
                     background:'rgba(255,255,255,0.1)', border:'1px solid rgba(255,255,255,0.18)',
                     borderRadius:'var(--radius-md)', color:'white',
                     fontFamily:'var(--font-display)', fontSize:13, fontWeight:600, cursor:'pointer', letterSpacing:'0.5px',
                   }}><Plus size={14}/>Add Event</button>
                 )}
-                {isAuthenticated && isAdmin() && (
-                  <button onClick={() => navigate('/admin')} style={{
+                {/* Dashboard — ADMIN or COORDINATOR */}
+                {isAuthenticated && (userIsAdmin || userIsCoordinator) && (
+                  <button onClick={() => navigate('/dashboard')} style={{
                     display:'flex', alignItems:'center', gap:6, padding:'7px 16px',
                     background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.09)',
                     borderRadius:'var(--radius-md)', color:'white',
                     fontFamily:'var(--font-display)', fontSize:13, fontWeight:500, cursor:'pointer',
                   }}><LayoutDashboard size={14}/>Dashboard</button>
                 )}
+                {/* Fest Pass — STUDENT or OUTSIDE_STUDENT only */}
+                {isAuthenticated && isParticipant() && (
+                  <button onClick={() => setShowFestPass(true)} style={{
+                    display:'flex', alignItems:'center', gap:6, padding:'7px 16px',
+                    background:'linear-gradient(135deg, rgba(196,134,60,0.15), rgba(245,199,120,0.1))',
+                    border:'1px solid rgba(245,199,120,0.25)',
+                    borderRadius:'var(--radius-md)', color:'#f5c778',
+                    fontFamily:'var(--font-display)', fontSize:13, fontWeight:600, cursor:'pointer', letterSpacing:'0.5px',
+                    transition:'all 0.3s ease',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(196,134,60,0.25), rgba(245,199,120,0.18))'; e.currentTarget.style.borderColor = 'rgba(245,199,120,0.4)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(196,134,60,0.15), rgba(245,199,120,0.1))'; e.currentTarget.style.borderColor = 'rgba(245,199,120,0.25)'; }}
+                  ><Ticket size={14}/>Fest Pass</button>
+                )}
                 {isAuthenticated ? (
-                  <button onClick={() => { logout(); navigate('/'); }} style={{
+                  <button onClick={handleLogout} style={{
                     display:'flex', alignItems:'center', justifyContent:'center',
                     width:34, height:34, background:'rgba(239,68,68,0.12)', border:'1px solid rgba(239,68,68,0.22)',
                     borderRadius:'var(--radius-sm)', cursor:'pointer', color:'#ef4444',
@@ -439,7 +532,7 @@ const Landing = () => {
             </div>
           </div>
 
-          {/* ── EIGEN LOGO — gold/amber gradient ── */}
+          {/* ── EIGEN LOGO ── */}
           <div
             onClick={() => window.scrollTo({ top:0, behavior:'smooth' })}
             style={{
@@ -485,7 +578,7 @@ const Landing = () => {
               <div style={{ marginBottom:14 }}>
                 <div style={{ fontFamily:'var(--font-mono)', fontSize:'clamp(11px,1.1vw,13px)', color:'rgba(255,255,255,0.45)', letterSpacing:'4px', textTransform:'uppercase', marginBottom:5, opacity:clubNameP, transform:`translateY(${(1-clubNameP)*14}px)` }}>
                   {String(clubIdx+1).padStart(2,'0')} / {String(clubs.length).padStart(2,'0')}
-                  {dataSource === 'api' && <span style={{ marginLeft:10, fontSize:10, color:'rgba(255,255,255,0.25)', letterSpacing:'2px' }}>LIVE</span>}
+                  <span style={{ marginLeft:10, fontSize:10, color:'rgba(59,130,246,0.5)', letterSpacing:'2px' }}>LIVE</span>
                 </div>
                 <h2 style={{ fontFamily:'var(--font-display)', fontSize:'clamp(28px,5.5vw,58px)', fontWeight:900, color:'white', letterSpacing:'-2px', lineHeight:1.1, marginBottom:4, transform:`translateY(${(1-clubNameP)*22}px)`, clipPath:`inset(0 ${(1-clubNameP)*100}% 0 0)`, textShadow:'0 4px 20px rgba(0,0,0,0.4)' }}>
                   {club.name}
@@ -501,7 +594,7 @@ const Landing = () => {
               {/* Divider */}
               <div style={{ height:1, maxWidth:380, background:'linear-gradient(90deg,rgba(255,255,255,0.2),transparent)', marginBottom:16, transform:`scaleX(${clubDescP})`, transformOrigin:'left' }}/>
 
-              {/* Events grid — all appear together */}
+              {/* Events grid */}
               <div className="e-grid" style={{ opacity:eventsP, transform:`translateY(${(1-eventsP)*28}px)` }}>
                 {club.events.length === 0 ? (
                   <div style={{ gridColumn:'1/-1', textAlign:'center', color:'rgba(255,255,255,0.2)', fontFamily:'var(--font-mono)', fontSize:13, letterSpacing:'2px', textTransform:'uppercase', padding:'40px 0' }}>
@@ -510,16 +603,18 @@ const Landing = () => {
                 ) : club.events.map((evt, i) => {
                   const isTeam = evt.participationType === 'TEAM';
                   const imgSrc = getEventImg(evt, i);
+                  const showManage = canManageClub(club.name);
+                  const showReg = canRegister(evt);
+                  const isDeleting = deletingEventId === (evt._id || evt.id);
+
                   return (
                     <div key={evt.id || i} className="e-card">
-                      {/* Image — 9:16 aspect container */}
+                      {/* Image */}
                       <div className="e-img-wrap">
-                        {/* Background blurry crop to fill empty space nicely */}
                         <img src={imgSrc} alt="" className="e-img-bg" aria-hidden="true" />
-                        {/* Foreground full image */}
                         <img src={imgSrc} alt={evt.title} className="e-img-fg" loading="lazy"
-                          onError={e => { 
-                            e.target.style.display='none'; 
+                          onError={e => {
+                            e.target.style.display='none';
                             e.target.previousSibling.style.display='none';
                             const fb = e.target.parentElement.querySelector('.e-fb');
                             if(fb) fb.style.display = 'flex';
@@ -531,7 +626,7 @@ const Landing = () => {
                         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:6 }}>
                           <span style={{
                             padding:'3px 8px', borderRadius:'var(--radius-sm)',
-                            background: club.gradient ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.05)',
+                            background: 'rgba(0,0,0,0.3)',
                             border: '1px solid rgba(255,255,255,0.08)',
                             fontFamily:'var(--font-mono)', fontSize:10, fontWeight:500, color:'rgba(255,255,255,0.6)',
                             whiteSpace:'nowrap',
@@ -552,9 +647,36 @@ const Landing = () => {
                             {isTeam ? `${evt.minTeamSize}-${evt.maxTeamSize} members` : 'Individual'}
                           </div>
                         </div>
-                        <button onClick={() => handleEvtReg(evt)} className="e-reg-btn">
-                          Register
-                        </button>
+
+                        {/* RBAC: Register button — only for participants / unauthenticated */}
+                        {showReg && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleEvtReg(evt); }}
+                            className="e-reg-btn"
+                          >
+                            Register
+                          </button>
+                        )}
+
+                        {/* RBAC: Edit & Delete buttons — only for admin/coordinator of this club */}
+                        {showManage && (
+                          <div className="e-manage-btns">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleEditEvent(evt); }}
+                              className="e-manage-btn e-edit-btn"
+                            >
+                              <Edit3 size={12}/> Edit
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteEvent(evt); }}
+                              className="e-manage-btn e-delete-btn"
+                              disabled={isDeleting}
+                              style={{ opacity: isDeleting ? 0.5 : 1 }}
+                            >
+                              <Trash2 size={12}/> {isDeleting ? 'Deleting...' : 'Delete'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -571,8 +693,9 @@ const Landing = () => {
       {showAddEvent && (
         <AddEventModal
           isOpen={showAddEvent}
-          onClose={() => setShowAddEvent(false)}
+          onClose={() => { setShowAddEvent(false); setEditingEvent(null); }}
           onEventAdded={handleEventAdded}
+          editEvent={editingEvent}
         />
       )}
       {showRegister && selectedEvent && (
@@ -582,6 +705,10 @@ const Landing = () => {
           event={selectedEvent}
         />
       )}
+      <FestPassModal
+        isOpen={showFestPass}
+        onClose={() => setShowFestPass(false)}
+      />
     </>
   );
 };

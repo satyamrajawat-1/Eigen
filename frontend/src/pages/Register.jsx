@@ -3,6 +3,7 @@ import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { registerCollege, loginGoogle } from '../lib/api';
 import { ArrowLeft } from 'lucide-react';
 
@@ -13,14 +14,15 @@ const AuthPage = () => {
   const [isLogin, setIsLogin] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login, isAuthenticated, isAdmin } = useAuth();
+  const { login, isAuthenticated, isAdmin, isCoordinator } = useAuth();
+  const toast = useToast();
   const canvasRef = useRef(null);
 
   // Redirect if already logged in
   useEffect(() => {
     if (isAuthenticated) {
-      if (isAdmin()) {
-        navigate('/admin');
+      if (isAdmin() || isCoordinator()) {
+        navigate('/dashboard');
       } else {
         navigate('/');
       }
@@ -96,27 +98,25 @@ const AuthPage = () => {
         response = await registerCollege(googleToken);
       }
 
+      const msg = response.data?.message || (isLogin ? 'Logged in successfully!' : 'Registered successfully!');
+      toast.success(msg);
+
       const userData = response.data.data?.user || response.data.data;
       login(userData);
 
-      if (userData?.roles?.includes('ADMIN')) {
-        navigate('/admin');
+      if (userData?.roles?.includes('ADMIN') || userData?.roles?.includes('COORDINATOR')) {
+        navigate('/dashboard');
       } else {
         navigate('/');
       }
     } catch (err) {
-      console.error("Auth Error:", err);
-      if (err.response?.data?.message) {
-        setError(err.response.data.message);
-      } else {
-        setError("Network error. Could not connect to the server.");
-      }
+      const msg = err.response?.data?.message || 'Network error. Could not connect to the server.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
   };
-
-
 
   return (
     <GoogleOAuthProvider clientId={CLIENT_ID}>
@@ -289,7 +289,11 @@ const AuthPage = () => {
                 }}>
                   <GoogleLogin
                     onSuccess={handleSuccess}
-                    onError={() => setError("Google Sign-In popup closed or failed.")}
+                    onError={() => {
+                      const msg = "Google Sign-In popup closed or failed.";
+                      setError(msg);
+                      toast.error(msg);
+                    }}
                     theme="filled_black"
                     size="large"
                     text={isLogin ? 'signin_with' : 'continue_with'}
