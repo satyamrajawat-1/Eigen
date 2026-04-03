@@ -8,31 +8,40 @@ import { v4 as uuidv4 } from "uuid";
 import { OAuth2Client } from 'google-auth-library';
 import { clubMember } from "../models/club.model.js";
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID); 
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-const registerUser = asyncHandler(async(req, res) => {
-    const { googleToken } = req.body; 
-    
-    if(!googleToken){
+const SUPER_ADMIN_EMAILS = [
+    "satyamrajawat283123@gmail.com",
+    "raghav.gupta000001@gmail.com"
+];
+
+
+const registerUser = asyncHandler(async (req, res) => {
+    const { googleToken } = req.body;
+
+    if (!googleToken) {
         throw new ApiError(400, "Google Token is Required");
     }
 
     // 1. Verify token
     const ticket = await client.verifyIdToken({
         idToken: googleToken,
-        audience: process.env.GOOGLE_CLIENT_ID, 
+        audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
-    const { sub: uid, email, name } = payload; 
+    const { sub: uid, email, name } = payload;
+    const incomingEmailLower = email.toLowerCase();
+
+    const isAdminEmail = SUPER_ADMIN_EMAILS.includes(incomingEmailLower);
 
     // 2. Find if user already exists
-    let user = await User.findOne({ firebaseUid: uid }); 
-    
+    let user = await User.findOne({ firebaseUid: uid });
+
     if (!user) {
         const isCollege = email.toUpperCase().endsWith("@IIITKOTA.AC.IN");
-        
-        if(!isCollege){
+
+        if (!isCollege && !isAdminEmail) {
             throw new ApiError(403, "Only College Students can register through this portal.");
         }
 
@@ -50,40 +59,52 @@ const registerUser = asyncHandler(async(req, res) => {
         // If the query found any clubs, update arrays
         if (userClubs && userClubs.length > 0) {
             assignedRoles.push("CLUB_MEMBER"); // Add the elevated role
-            
+            if(userClubs.includes("TECHKNOW")){
+                assignedRoles.push("EXECUTIVE")
+            }
             // Extract just the club names and ensure they match your User schema's Enum (Uppercase)
             assignedClubs = userClubs.map(club => club.clubName.toUpperCase());
         }
         // -------------------------------
 
+        if (isAdminEmail) {
+            assignedRoles.push("ADMIN");
+        }
+
+
         // 3. Create the User with dynamic roles and clubs
         user = await User.create({
-            firebaseUid: uid, 
+            firebaseUid: uid,
             email: email.toUpperCase(),
             name: name.toUpperCase(),
-            roles: assignedRoles,             // Dynamically assigned
-            clubMemberships: assignedClubs,   // Dynamically assigned
-            qrCodeIdentifier: uuidv4() 
+            roles: assignedRoles,             
+            clubMemberships: assignedClubs,   
+            qrCodeIdentifier: uuidv4()
         });
+    } else {
+        if (isAdminEmail && !user.roles.includes("ADMIN")) {
+            user.roles.push("ADMIN");
+            await user.save({ validateBeforeSave: false });
+        }
     }
 
     // 4. Generate Session Token
-    let accessToken = user.generateAccessToken(); 
+    let accessToken = user.generateAccessToken();
     console.log(accessToken)
-    
+
     const options = {
         httpOnly: true,
         secure: true,
         sameSite: "None"
     };
-    
+
     return res
         .status(200)
         .cookie("accessToken", accessToken, options)
         .json(new ApiResponse(200, user, "User authenticated successfully"));
 });
- const registerOutsideUser = asyncHandler(async (req, res) => {
-    const { name, email,phone } = req.body;
+const registerOutsideUser = asyncHandler(async (req, res) => {
+    const { name, email, phone } = req.body;
     const TARGET_EVENT = "DJ NIGHT";
 
     // 1. Validation
@@ -112,16 +133,16 @@ const registerUser = asyncHandler(async(req, res) => {
         user = await User.create({
             name: name.toUpperCase(),
             email: email.toUpperCase(),
-            phone : phone,
+            phone: phone,
             roles: ["OUTSIDE_STUDENT"],
             qrCodeIdentifier: uuidv4() // Generate their unique digital ticket
         });
     }
 
     // 4. Check if they are already registered for this specific event
-    const existingAttendance = await Attendance.findOne({ 
-        user: user._id, 
-        event: event._id 
+    const existingAttendance = await Attendance.findOne({
+        user: user._id,
+        event: event._id
     });
 
     if (existingAttendance) {
@@ -136,15 +157,15 @@ const registerUser = asyncHandler(async(req, res) => {
     });
 
     return res.status(201).json(
-        new ApiResponse(201, 
-            { 
+        new ApiResponse(201,
+            {
                 user: {
                     name: user.name,
                     email: user.email,
-                    qrCodeIdentifier: user.qrCodeIdentifier 
+                    qrCodeIdentifier: user.qrCodeIdentifier
                 },
-                attendanceStatus: attendance.status 
-            }, 
+                attendanceStatus: attendance.status
+            },
             `OUTSIDE STUDENT REGISTERED FOR ${TARGET_EVENT} SUCCESSFULLY`
         )
     );
@@ -167,7 +188,7 @@ const logOutUser = asyncHandler(async (req, res) => {
     // 2. Ensure options match your login cookie exactly
     const options = {
         httpOnly: true,
-        secure: true, 
+        secure: true,
         sameSite: "None" // Included this since it was in your login controller
     };
 
@@ -193,7 +214,7 @@ const loginWithGoogle = asyncHandler(async (req, res) => {
     });
 
     const payload = ticket.getPayload();
-    const { email } = payload; 
+    const { email } = payload;
 
     // 2. Check if the user already exists
     const user = await User.findOne({ email: email.toUpperCase() });
@@ -224,11 +245,11 @@ const loginWithGoogle = asyncHandler(async (req, res) => {
         .cookie("accessToken", accessToken, options)
         .json(
             new ApiResponse(
-                200, 
-                { 
-                    user: userProfile, 
-                    token: accessToken 
-                }, 
+                200,
+                {
+                    user: userProfile,
+                    token: accessToken
+                },
                 "USER LOGGED IN SUCCESSFULLY"
             )
         );

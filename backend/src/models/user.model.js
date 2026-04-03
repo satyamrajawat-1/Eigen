@@ -23,7 +23,7 @@ const userSchema = new mongoose.Schema({
     // Changed to an Array to support multiple roles (e.g., Student + Member of 2 Clubs)
     roles: [{ 
         type: String, 
-        enum: ['STUDENT', 'OUTSIDE_STUDENT', 'EXECUTIVE', 'CLUB_MEMBER', 'ADMIN'], 
+        enum: ['STUDENT', 'OUTSIDE_STUDENT', 'EXECUTIVE', 'CLUB_MEMBER', 'ADMIN' , "COORDINATOR"], 
         default: ['STUDENT'] 
     }],
 

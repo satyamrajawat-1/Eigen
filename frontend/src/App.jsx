@@ -1,18 +1,30 @@
-import { useState } from 'react'
-import { BrowserRouter } from 'react-router-dom' // 1. Import BrowserRouter
-import Register from './pages/Register'
-import './App.css'
+import React from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import Landing from './pages/Landing';
+import AuthPage from './pages/Register';
+import AdminDashboard from './pages/AdminDashboard';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    // 2. Wrap your app in the BrowserRouter
-    <BrowserRouter>
-        <Register />
-        <div>hello</div>
-    </BrowserRouter>
-  )
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/auth" element={<AuthPage />} />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute allowedRoles={['ADMIN']}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
 }
 
-export default App
+export default App;
