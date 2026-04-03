@@ -72,4 +72,34 @@ class EventService {
       return [];
     }
   }
+  // Shoots the scanned QR code to the backend and returns the server's message!
+  Future<String> submitScan(String eventId, String qrCode, String scanType) async {
+    try {
+      String? jwtToken = await _storage.read(key: 'jwt_token');
+      if (jwtToken == null) return "Error: You are not logged in.";
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/$eventId/scan'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $jwtToken',
+        },
+        body: jsonEncode({
+          'qrCodeIdentifier': qrCode,
+          'scanType': scanType, // 'IN' or 'OUT'
+        }),
+      );
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return "SUCCESS: ${responseData['message']}";
+      } else {
+        // Returns the exact error message Rohit wrote (e.g., "ACCESS DENIED...")
+        return "ERROR: ${responseData['message'] ?? 'Scan Failed'}";
+      }
+    } catch (e) {
+      return "ERROR: Network issue. Check internet connection.";
+    }
+  }
 }
