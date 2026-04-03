@@ -231,6 +231,29 @@ const Landing = () => {
     setSelectedEvent(evt); setShowRegister(true);
   };
 
+  const handleEventAdded = (newEvent) => {
+    setClubs(prevClubs => {
+      const newClubs = [...prevClubs];
+      const clubIndex = newClubs.findIndex(club => club.name === newEvent.clubName);
+      if (clubIndex !== -1) {
+        newClubs[clubIndex].events.push({
+          id: newEvent._id,
+          title: newEvent.title,
+          description: newEvent.description,
+          date: newEvent.date,
+          startTime: newEvent.startTime,
+          endTime: newEvent.endTime,
+          location: newEvent.location,
+          participationType: newEvent.participationType,
+          minTeamSize: newEvent.minTeamSize,
+          maxTeamSize: newEvent.maxTeamSize,
+          image: newEvent.image,
+        });
+      }
+      return newClubs;
+    });
+  };
+
   const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
 
   const getEventImg = (evt, idx) => {
@@ -497,68 +520,44 @@ const Landing = () => {
                         <img src={imgSrc} alt={evt.title} className="e-img-fg" loading="lazy"
                           onError={e => { 
                             e.target.style.display='none'; 
-                            e.target.previousSibling.style.display='none'; 
-                            e.target.parentNode.querySelector('.e-fb').style.display='flex'; 
+                            e.target.previousSibling.style.display='none';
+                            const fb = e.target.parentElement.querySelector('.e-fb');
+                            if(fb) fb.style.display = 'flex';
                           }}
                         />
-                        <div className="e-fb" style={{ display:'none', background:club.gradient }}>{evt.title?.[0]}</div>
+                        <div className="e-fb" style={{display:'none'}}>{club.name.split(' ').map(w=>w[0]).join('')}</div>
                       </div>
-
                       <div className="e-body">
-                        {/* Accent line */}
-                        <div style={{ width:'100%', height:2, marginBottom:9, background:club.gradient, opacity:0.45, borderRadius:1 }}/>
-
-                        {/* Badge */}
-                        <div style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'2px 9px', borderRadius:14, marginBottom:9, background: isTeam?'rgba(255,255,255,0.05)':'rgba(16,185,129,0.08)', border:`1px solid ${isTeam?'rgba(255,255,255,0.1)':'rgba(16,185,129,0.18)'}` }}>
-                          {isTeam ? <Users size={10} color="rgba(255,255,255,0.6)"/> : <UserIcon size={10} color="#10b981"/>}
-                          <span style={{ fontSize:10, fontFamily:'var(--font-mono)', fontWeight:600, letterSpacing:'1px', textTransform:'uppercase', color: isTeam?'rgba(255,255,255,0.6)':'#10b981' }}>
-                            {isTeam ? `Team (${evt.minTeamSize}-${evt.maxTeamSize})` : 'Individual'}
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:6 }}>
+                          <span style={{
+                            padding:'3px 8px', borderRadius:'var(--radius-sm)',
+                            background: club.gradient ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            fontFamily:'var(--font-mono)', fontSize:10, fontWeight:500, color:'rgba(255,255,255,0.6)',
+                            whiteSpace:'nowrap',
+                          }}>{club.name}</span>
+                          <span style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'rgba(255,255,255,0.4)', whiteSpace:'nowrap' }}>
+                            {formatDate(evt.date)}
                           </span>
                         </div>
-
-                        {/* Title */}
-                        <h3 style={{ fontFamily:'var(--font-display)', fontSize:'clamp(13px,1.2vw,17px)', fontWeight:700, color:'white', marginBottom:5, letterSpacing:'-0.3px', lineHeight:1.2 }}>{evt.title}</h3>
-
-                        {/* Desc */}
-                        <p style={{ fontFamily:'var(--font-body)', fontSize:'clamp(11px,0.9vw,13px)', color:'rgba(255,255,255,0.45)', lineHeight:1.5, marginBottom:11, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{evt.description}</p>
-
-                        {/* Meta */}
-                        <div style={{ display:'flex', flexWrap:'wrap', gap:'6px 10px', marginBottom:11 }}>
-                          {[
-                            [Calendar, formatDate(evt.date)],
-                            [Clock, `${evt.startTime}–${evt.endTime}`],
-                            [MapPin, evt.location],
-                          ].map(([Icon, txt], k) => txt && (
-                            <span key={k} style={{ display:'flex', alignItems:'center', gap:3, fontSize:'clamp(10px,0.8vw,11px)', color:'rgba(255,255,255,0.35)', fontFamily:'var(--font-mono)' }}>
-                              <Icon size={10}/>{txt}
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* Spacer to push buttons to bottom */}
-                        <div style={{ flex:1 }} />
-
-                        {/* Register button — for regular users */}
-                        <button className="e-reg-btn" onClick={() => handleEvtReg(evt)}>
-                          Register Now
-                        </button>
-
-                        {/* Admin/Coordinator action buttons */}
-                        {isAuthenticated && (isAdmin?.() || isCoordinator?.()) && (
-                          <div className="e-admin-btns">
-                            <button className="e-admin-btn" style={{ background:'rgba(59,130,246,0.12)', border:'1px solid rgba(59,130,246,0.25)', color:'#60a5fa' }}
-                              onClick={(e) => { e.stopPropagation(); /* TODO: Edit event */ }}>
-                              Edit
-                            </button>
-                            <button className="e-admin-btn" style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.22)', color:'#f87171' }}
-                              onClick={(e) => { e.stopPropagation(); /* TODO: Delete event */ }}>
-                              Delete
-                            </button>
+                        <h3 style={{ fontFamily:'var(--font-display)', fontSize:17, fontWeight:600, color:'white', marginBottom:4, lineHeight:1.3, flex:1 }}>
+                          {evt.title}
+                        </h3>
+                        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:10 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:4, color:'rgba(255,255,255,0.4)', fontSize:11 }}>
+                            <Clock size={11}/> {evt.startTime}
                           </div>
-                        )}
+                          <div style={{ display:'flex', alignItems:'center', gap:4, color:'rgba(255,255,255,0.4)', fontSize:11 }}>
+                            {isTeam ? <Users size={11}/> : <UserIcon size={11}/>}
+                            {isTeam ? `${evt.minTeamSize}-${evt.maxTeamSize} members` : 'Individual'}
+                          </div>
+                        </div>
+                        <button onClick={() => handleEvtReg(evt)} className="e-reg-btn">
+                          Register
+                        </button>
                       </div>
                     </div>
-                  );
+                  )
                 })}
               </div>
             </div>
@@ -569,14 +568,20 @@ const Landing = () => {
         </div>
       </div>
 
-      {/* Footer */}
-      <footer style={{ padding:'70px 24px 36px', textAlign:'center', borderTop:'1px solid rgba(255,255,255,0.05)', background:'#06060b' }}>
-        <div style={{ fontFamily:'var(--font-display)', fontSize:30, fontWeight:900, background:'linear-gradient(135deg,#f5e6c8,#c4863c,#f5c778)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', marginBottom:10 }}>EIGEN</div>
-        <p style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'rgba(255,255,255,0.25)', letterSpacing:'2px', textTransform:'uppercase' }}>IIIT KOTA COLLEGE FEST 2026</p>
-      </footer>
-
-      <AddEventModal isOpen={showAddEvent} onClose={() => setShowAddEvent(false)}/>
-      <RegisterEventModal isOpen={showRegister} onClose={() => { setShowRegister(false); setSelectedEvent(null); }} event={selectedEvent}/>
+      {showAddEvent && (
+        <AddEventModal
+          isOpen={showAddEvent}
+          onClose={() => setShowAddEvent(false)}
+          onEventAdded={handleEventAdded}
+        />
+      )}
+      {showRegister && selectedEvent && (
+        <RegisterEventModal
+          isOpen={showRegister}
+          onClose={() => { setShowRegister(false); setSelectedEvent(null); }}
+          event={selectedEvent}
+        />
+      )}
     </>
   );
 };

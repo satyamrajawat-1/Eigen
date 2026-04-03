@@ -4,19 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { registerCollege, loginGoogle } from '../lib/api';
-import { Shield, ArrowLeft, Mail, Lock, Eye, EyeOff } from 'lucide-react';
-import API from '../lib/api';
+import { ArrowLeft } from 'lucide-react';
 
 const CLIENT_ID = "1038582138858-krl5jmj73vk3776khbqia4ocgqfkkqrl.apps.googleusercontent.com";
 
 const AuthPage = () => {
   const [error, setError] = useState('');
   const [isLogin, setIsLogin] = useState(false);
-  const [isAdminLogin, setIsAdminLogin] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [adminEmail, setAdminEmail] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { login, isAuthenticated, isAdmin } = useAuth();
   const canvasRef = useRef(null);
@@ -121,45 +116,7 @@ const AuthPage = () => {
     }
   };
 
-  const handleAdminLogin = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
 
-    try {
-      const response = await API.post('/users/admin-login', {
-        email: adminEmail,
-        password: adminPassword,
-      });
-
-      const userData = response.data.data?.user || response.data.data;
-      login(userData);
-      navigate('/admin');
-    } catch (err) {
-      console.error("Admin Login Error:", err);
-      if (err.response?.data?.message) {
-        setError(err.response.data.message);
-      } else {
-        setError("Invalid credentials or server error.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const inputStyle = {
-    width: '100%',
-    padding: '13px 16px',
-    paddingLeft: '44px',
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    borderRadius: 'var(--radius-md)',
-    color: 'white',
-    fontFamily: 'var(--font-body)',
-    fontSize: '14px',
-    outline: 'none',
-    transition: 'border-color 0.2s ease, background 0.2s ease',
-  };
 
   return (
     <GoogleOAuthProvider clientId={CLIENT_ID}>
@@ -182,12 +139,9 @@ const AuthPage = () => {
           width: '500px',
           height: '500px',
           borderRadius: '50%',
-          background: isAdminLogin
-            ? 'radial-gradient(circle, rgba(245,199,120,0.08) 0%, transparent 70%)'
-            : 'radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%)',
           filter: 'blur(80px)',
           zIndex: 0,
-          transition: 'background 0.5s ease',
         }} />
 
         {/* Auth Card */}
@@ -211,10 +165,7 @@ const AuthPage = () => {
           {/* Top gradient line */}
           <div style={{
             height: '3px',
-            background: isAdminLogin
-              ? 'linear-gradient(90deg, #c4863c, #f5c778, #e8b86d)'
-              : 'linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.7), rgba(255,255,255,0.3))',
-            transition: 'background 0.4s ease',
+            background: 'linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.7), rgba(255,255,255,0.3))',
           }} />
 
           <div style={{ padding: '40px 32px' }}>
@@ -251,7 +202,7 @@ const AuthPage = () => {
               </p>
             </div>
 
-            {/* Toggle Tabs: Register / Login / Admin */}
+            {/* Toggle Tabs: Register / Login */}
             <div style={{
               display: 'flex',
               background: 'rgba(255,255,255,0.03)',
@@ -260,27 +211,19 @@ const AuthPage = () => {
               marginBottom: '24px',
               border: '1px solid rgba(255,255,255,0.06)',
             }}>
-              {['Register', 'Login', 'Admin'].map((tab, i) => {
-                const isActive = (i === 0 && !isLogin && !isAdminLogin) ||
-                                 (i === 1 && isLogin && !isAdminLogin) ||
-                                 (i === 2 && isAdminLogin);
+              {['Register', 'Login'].map((tab, i) => {
+                const isActive = (i === 0 && !isLogin) || (i === 1 && isLogin);
                 return (
                   <button
                     key={tab}
                     onClick={() => {
                       setError('');
-                      if (i === 0) { setIsLogin(false); setIsAdminLogin(false); }
-                      if (i === 1) { setIsLogin(true); setIsAdminLogin(false); }
-                      if (i === 2) { setIsAdminLogin(true); setIsLogin(false); }
+                      setIsLogin(i === 1);
                     }}
                     style={{
                       flex: 1,
                       padding: '9px',
-                      background: isActive
-                        ? i === 2
-                          ? 'linear-gradient(135deg, #c4863c, #e8b86d)'
-                          : 'rgba(255,255,255,0.1)'
-                        : 'transparent',
+                      background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
                       border: 'none',
                       borderRadius: 'var(--radius-sm)',
                       color: isActive ? 'white' : 'rgba(255,255,255,0.3)',
@@ -296,188 +239,78 @@ const AuthPage = () => {
                       gap: '5px',
                     }}
                   >
-                    {i === 2 && <Shield size={13} />}
                     {tab}
                   </button>
                 );
               })}
             </div>
 
+            {/* Google Login Form */}
             <AnimatePresence mode="wait">
-              {isAdminLogin ? (
-                /* ======= ADMIN LOGIN FORM ======= */
-                <motion.div
-                  key="admin-form"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
-                  transition={{ duration: 0.25 }}
-                >
-                  {/* Admin badge */}
-                  <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    padding: '12px', marginBottom: '20px', borderRadius: 'var(--radius-md)',
-                    background: 'rgba(196,134,60,0.08)', border: '1px solid rgba(196,134,60,0.15)',
-                  }}>
-                    <Shield size={16} color="#e8b86d" />
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: '#e8b86d', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 600 }}>
-                      Admin Access
-                    </span>
-                  </div>
+              <motion.div
+                key={isLogin ? 'login' : 'register'}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.25 }}
+              >
+                {/* Description */}
+                <p style={{
+                  fontFamily: 'var(--font-body)', fontSize: '14px',
+                  color: 'rgba(255,255,255,0.5)', textAlign: 'center',
+                  lineHeight: 1.6, marginBottom: '22px',
+                }}>
+                  {isLogin
+                    ? 'Welcome back! Sign in with your Google account to continue.'
+                    : <>Use your official <strong style={{ color: 'rgba(255,255,255,0.8)' }}>@iiitkota.ac.in</strong> email to register.</>
+                  }
+                </p>
 
-                  {/* Description */}
-                  <p style={{
-                    fontFamily: 'var(--font-body)', fontSize: '13px',
-                    color: 'rgba(255,255,255,0.45)', textAlign: 'center',
-                    lineHeight: 1.6, marginBottom: '22px',
-                  }}>
-                    Login with your admin credentials to manage events and users.
-                  </p>
+                {/* Error */}
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{
+                      padding: '11px 14px', background: 'rgba(239,68,68,0.08)',
+                      border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-md)',
+                      marginBottom: '16px', color: '#f87171', fontSize: '13px',
+                      fontFamily: 'var(--font-body)', textAlign: 'center',
+                    }}
+                  >
+                    {error}
+                  </motion.div>
+                )}
 
-                  {/* Error */}
-                  {error && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      style={{
-                        padding: '11px 14px', background: 'rgba(239,68,68,0.08)',
-                        border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-md)',
-                        marginBottom: '16px', color: '#f87171', fontSize: '13px',
-                        fontFamily: 'var(--font-body)', textAlign: 'center',
-                      }}
-                    >
-                      {error}
-                    </motion.div>
-                  )}
+                {/* Google Login */}
+                <div style={{
+                  display: 'flex', justifyContent: 'center', marginBottom: '24px',
+                  opacity: loading ? 0.6 : 1, pointerEvents: loading ? 'none' : 'auto',
+                }}>
+                  <GoogleLogin
+                    onSuccess={handleSuccess}
+                    onError={() => setError("Google Sign-In popup closed or failed.")}
+                    theme="filled_black"
+                    size="large"
+                    text={isLogin ? 'signin_with' : 'continue_with'}
+                    shape="rectangular"
+                    useOneTap={false}
+                    width="360"
+                  />
+                </div>
 
-                  <form onSubmit={handleAdminLogin} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {/* Email */}
-                    <div style={{ position: 'relative' }}>
-                      <Mail size={16} color="rgba(255,255,255,0.3)" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', zIndex: 1 }} />
-                      <input
-                        type="email"
-                        placeholder="Admin email"
-                        value={adminEmail}
-                        onChange={e => setAdminEmail(e.target.value)}
-                        required
-                        style={inputStyle}
-                        onFocus={e => { e.target.style.borderColor = 'rgba(196,134,60,0.4)'; e.target.style.background = 'rgba(255,255,255,0.06)'; }}
-                        onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; e.target.style.background = 'rgba(255,255,255,0.04)'; }}
-                      />
-                    </div>
-
-                    {/* Password */}
-                    <div style={{ position: 'relative' }}>
-                      <Lock size={16} color="rgba(255,255,255,0.3)" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', zIndex: 1 }} />
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="Password"
-                        value={adminPassword}
-                        onChange={e => setAdminPassword(e.target.value)}
-                        required
-                        style={{ ...inputStyle, paddingRight: '44px' }}
-                        onFocus={e => { e.target.style.borderColor = 'rgba(196,134,60,0.4)'; e.target.style.background = 'rgba(255,255,255,0.06)'; }}
-                        onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; e.target.style.background = 'rgba(255,255,255,0.04)'; }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        style={{
-                          position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                          background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)',
-                          padding: 4, display: 'flex',
-                        }}
-                      >
-                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-
-                    {/* Submit */}
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      style={{
-                        width: '100%', padding: '13px',
-                        background: loading ? 'rgba(196,134,60,0.3)' : 'linear-gradient(135deg, #c4863c, #e8b86d)',
-                        border: 'none', borderRadius: 'var(--radius-md)',
-                        color: 'white', fontFamily: 'var(--font-display)',
-                        fontSize: '14px', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
-                        letterSpacing: '1px', textTransform: 'uppercase',
-                        transition: 'all 0.25s ease',
-                        opacity: loading ? 0.7 : 1,
-                      }}
-                    >
-                      {loading ? 'Authenticating...' : 'Login as Admin'}
-                    </button>
-                  </form>
-                </motion.div>
-              ) : (
-                /* ======= GOOGLE LOGIN ======= */
-                <motion.div
-                  key="google-form"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
-                  transition={{ duration: 0.25 }}
-                >
-                  {/* Description */}
-                  <p style={{
-                    fontFamily: 'var(--font-body)', fontSize: '14px',
-                    color: 'rgba(255,255,255,0.5)', textAlign: 'center',
-                    lineHeight: 1.6, marginBottom: '22px',
-                  }}>
-                    {isLogin
-                      ? 'Welcome back! Sign in with your Google account to continue.'
-                      : <>Use your official <strong style={{ color: 'rgba(255,255,255,0.8)' }}>@iiitkota.ac.in</strong> email to register.</>
-                    }
-                  </p>
-
-                  {/* Error */}
-                  {error && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      style={{
-                        padding: '11px 14px', background: 'rgba(239,68,68,0.08)',
-                        border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-md)',
-                        marginBottom: '16px', color: '#f87171', fontSize: '13px',
-                        fontFamily: 'var(--font-body)', textAlign: 'center',
-                      }}
-                    >
-                      {error}
-                    </motion.div>
-                  )}
-
-                  {/* Google Login */}
-                  <div style={{
-                    display: 'flex', justifyContent: 'center', marginBottom: '24px',
-                    opacity: loading ? 0.6 : 1, pointerEvents: loading ? 'none' : 'auto',
-                  }}>
-                    <GoogleLogin
-                      onSuccess={handleSuccess}
-                      onError={() => setError("Google Sign-In popup closed or failed.")}
-                      theme="filled_black"
-                      size="large"
-                      text={isLogin ? 'signin_with' : 'continue_with'}
-                      shape="rectangular"
-                      useOneTap={false}
-                      width="360"
-                    />
-                  </div>
-
-                  {/* Footer text */}
-                  <p style={{
-                    fontFamily: 'var(--font-body)', fontSize: '12px',
-                    color: 'rgba(255,255,255,0.25)', textAlign: 'center',
-                    lineHeight: 1.6,
-                  }}>
-                    {isLogin
-                      ? "Don't have an account? Switch to Register above."
-                      : 'Not a college student? Please see an Executive at the registration desk.'
-                    }
-                  </p>
-                </motion.div>
-              )}
+                {/* Footer text */}
+                <p style={{
+                  fontFamily: 'var(--font-body)', fontSize: '12px',
+                  color: 'rgba(255,255,255,0.25)', textAlign: 'center',
+                  lineHeight: 1.6,
+                }}>
+                  {isLogin
+                    ? "Don't have an account? Switch to Register above."
+                    : 'Not a college student? Please see an Executive at the registration desk.'
+                  }
+                </p>
+              </motion.div>
             </AnimatePresence>
           </div>
         </motion.div>

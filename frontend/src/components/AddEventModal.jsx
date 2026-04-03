@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Upload, Calendar, Clock, MapPin, Users, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { createEvent } from '../lib/api';
 
 const CLUBS = [
   'CODEBASE', 'KERNEL', 'ARC ROBOTICS', 'ALGORITHMUS',
@@ -32,7 +33,7 @@ const labelStyle = {
   display: 'block',
 };
 
-const AddEventModal = ({ isOpen, onClose }) => {
+const AddEventModal = ({ isOpen, onClose, onEventAdded }) => {
   const { getUserClubs } = useAuth();
   const userClubs = getUserClubs();
 
@@ -69,16 +70,31 @@ const AddEventModal = ({ isOpen, onClose }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setSubmitting(false);
-    onClose();
-    setForm({
-      title: '', clubName: userClubs[0] || '', description: '', date: '',
-      startTime: '', endTime: '', location: 'IIIT KOTA CAMPUS',
-      participationType: 'INDIVIDUAL', minTeamSize: 2, maxTeamSize: 4, image: null,
+
+    const formData = new FormData();
+    Object.keys(form).forEach(key => {
+      formData.append(key, form[key]);
     });
-    setFileName('');
+
+    try {
+      const res = await createEvent(formData);
+      if (res.data?.data) {
+        onEventAdded(res.data.data);
+      }
+      onClose();
+      // Reset form after successful submission
+      setForm({
+        title: '', clubName: userClubs[0] || '', description: '', date: '',
+        startTime: '', endTime: '', location: 'IIIT KOTA CAMPUS',
+        participationType: 'INDIVIDUAL', minTeamSize: 2, maxTeamSize: 4, image: null,
+      });
+      setFileName('');
+    } catch (error) {
+      console.error('Failed to create event:', error);
+      // Optionally, show an error message to the user
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const availableClubs = userClubs.length > 0 ? userClubs : CLUBS;

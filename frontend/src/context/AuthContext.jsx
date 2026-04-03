@@ -44,7 +44,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const isCoordinator = () => {
-    return user?.roles?.includes('COORDINATOR') || user?.roles?.includes('CLUB_MEMBER') || user?.roles?.includes('EXECUTIVE') || false;
+    return user?.roles?.includes('COORDINATOR') || false;
   };
 
   const isParticipant = () => {
