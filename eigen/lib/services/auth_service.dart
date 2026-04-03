@@ -45,7 +45,8 @@ class AuthService {
         // 3. Extract the VIP Wristband (JWT) and the User Data
         final String jwtToken = responseData['data']['token'];
         final Map<String, dynamic> userDataJson = responseData['data']['user'];
-
+        //printing the jwt token
+        print("DEBUG: Copy this JWT for Postman: $jwtToken");
         // 4. Save the JWT securely
         await _storage.write(key: 'jwt_token', value: jwtToken);
 
