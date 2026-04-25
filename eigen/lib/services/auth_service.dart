@@ -12,7 +12,7 @@ class AuthService {
   Future<void> _ensureInitialized() async {
     if (!_isInitialized) {
       await _googleSignIn.initialize(
-        serverClientId: '1038582138858-krl5jmj73vk3776khbqia4ocgqfkkqrl.apps.googleusercontent.com',
+        serverClientId: '286316884208-147gsfjhufu2etijs2neg6vaqrg8pq4e.apps.googleusercontent.com',
         hostedDomain: 'iiitkota.ac.in',
       );
       _isInitialized = true;

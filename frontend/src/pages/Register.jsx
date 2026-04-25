@@ -7,7 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { registerCollege, loginGoogle } from '../lib/api';
 import { ArrowLeft } from 'lucide-react';
 
-const CLIENT_ID = "1038582138858-krl5jmj73vk3776khbqia4ocgqfkkqrl.apps.googleusercontent.com";
+const CLIENT_ID = "286316884208-147gsfjhufu2etijs2neg6vaqrg8pq4e.apps.googleusercontent.com";
 
 const AuthPage = () => {
   const [error, setError] = useState('');
