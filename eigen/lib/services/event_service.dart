@@ -9,7 +9,7 @@ class EventService {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   // Replace this with your live Render URL when testing on a real phone!
-  final String baseUrl = 'https://eigen-hhcm.onrender.com/api/v1/events';
+  final String baseUrl = 'https://eigenregistration.onrender.com/api/v1/events';
 
   Future<List<EventModel>> fetchMyEvents() async {
     try {

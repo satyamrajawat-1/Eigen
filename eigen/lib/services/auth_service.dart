@@ -34,7 +34,7 @@ class AuthService {
 
       // 2. Send the Google Token to your live Render API
       final response = await http.post(
-        Uri.parse('https://eigen-hhcm.onrender.com/api/v1/users/login/google'),
+        Uri.parse('https://eigenregistration.onrender.com/api/v1/users/login/google'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'googleToken': googleIdToken}),
       );

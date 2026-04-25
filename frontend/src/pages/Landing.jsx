@@ -3,7 +3,7 @@ import { useScroll } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { getAllEvents, deleteEvent } from '../lib/api';
+import { getAllEvents, deleteEvent, BACKEND_URL } from '../lib/api';
 import AddEventModal from '../components/AddEventModal';
 import RegisterEventModal from '../components/RegisterEventModal';
 import FestPassModal from '../components/FestPassModal';
@@ -323,8 +323,9 @@ const Landing = () => {
   const getEventImg = (evt, idx) => {
     if (!evt.image) return GENERIC_IMAGES[idx % GENERIC_IMAGES.length];
     if (evt.image.startsWith('http://') || evt.image.startsWith('https://')) return evt.image;
+    // Normalize: strip leading "public/" or "public\" and convert backslashes to forward slashes
     const cleanPath = evt.image.replace(/^public[/\\]/, '').replace(/\\/g, '/');
-    return `http://localhost:3000/${cleanPath}`;
+    return `${BACKEND_URL}/${cleanPath}`;
   };
 
   return (

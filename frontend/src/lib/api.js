@@ -1,8 +1,12 @@
 import axios from 'axios';
 
+// Backend origin (without trailing slash)
+export const BACKEND_URL = 'https://eigenregistration.onrender.com';
+
 const API = axios.create({
-  baseURL: 'http://localhost:3000/api/v1',
+  baseURL: `${BACKEND_URL}/api/v1`,
   withCredentials: true,
+  timeout: 15000, // 15s timeout — Render free-tier cold-starts can take ~10s
 });
 
 // Add a request interceptor to handle JSON content-type
